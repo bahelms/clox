@@ -13,6 +13,8 @@ int Chunk::add_constant(Value value) {
   return constants.size() - 1;
 }
 
+Value Chunk::get_constant(int index) const { return constants[index]; }
+
 int Chunk::get_line(int instruction_index) const {
   for (const auto &pair : instruction_line_map) {
     auto instr_indexes = pair.second;

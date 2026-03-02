@@ -50,7 +50,7 @@ int constant_instruction(std::string_view name, const Chunk &chunk,
                          int offset) {
   uint8_t constant_idx = chunk[offset + 1];
   std::cout << std::format("{:<16s} {:4d} '", name, constant_idx);
-  print_value(chunk.constants[constant_idx]);
+  print_value(chunk.get_constant(constant_idx));
   std::cout << "'" << std::endl;
   return offset + 2;
 }
