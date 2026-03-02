@@ -16,7 +16,7 @@ public:
   auto size() const { return code.size(); }
 
   void write(uint8_t byte, int line);
-  int add_constant(Value value);
+  void write_constant(Value value, int line);
   Value get_constant(int index) const;
   int get_line(int instruction_index) const;
 };

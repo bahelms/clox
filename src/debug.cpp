@@ -65,9 +65,8 @@ static std::string capture_stdout(std::function<void()> fn) {
 
 TEST_CASE("disassemble_chunk") {
   Chunk chunk;
-  int constant = chunk.add_constant(1.5);
   chunk.write(OP_CONSTANT, 1);
-  chunk.write(constant, 1);
+  chunk.write_constant(1.5, 1);
   chunk.write(OP_RETURN, 2);
 
   std::string output =
@@ -93,9 +92,8 @@ TEST_CASE("disassemble_instruction") {
 
   SUBCASE("OP_CONSTANT advances offset by 2") {
     Chunk chunk;
-    int constant = chunk.add_constant(3.14);
     chunk.write(OP_CONSTANT, 1);
-    chunk.write(constant, 1);
+    chunk.write_constant(3.14, 1);
 
     std::string output = capture_stdout([&] {
       int next_offset = disassemble_instruction(chunk, 0);
@@ -103,6 +101,7 @@ TEST_CASE("disassemble_instruction") {
     });
 
     CHECK(output.find("OP_CONSTANT") != std::string::npos);
+    CHECK(output.find("3.14") != std::string::npos);
   }
 
   SUBCASE("same-line instructions print pipe instead of line number") {

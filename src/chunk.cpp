@@ -7,10 +7,10 @@ void Chunk::write(uint8_t byte, int line) {
   instruction_line_map[line].push_back(instruction_index);
 }
 
-// returns index of constant
-int Chunk::add_constant(Value value) {
+void Chunk::write_constant(Value value, int line) {
   constants.push_back(value);
-  return constants.size() - 1;
+  int index = constants.size() - 1;
+  write(index, line);
 }
 
 Value Chunk::get_constant(int index) const { return constants[index]; }
@@ -27,12 +27,11 @@ int Chunk::get_line(int instruction_index) const {
   return 0;
 }
 
-TEST_CASE("Chunk::add_constant") {
+TEST_CASE("Chunk::write_constant") {
   Chunk chunk;
 
-  SUBCASE("returns incrementing indices for successive constants") {
-    CHECK(chunk.add_constant(1.0) == 0);
-    CHECK(chunk.add_constant(2.0) == 1);
-    CHECK(chunk.add_constant(3.0) == 2);
+  SUBCASE("sets the constant with the line") {
+    chunk.write_constant(1.01, 6);
+    CHECK(chunk.get_constant(0) == 1.01);
   }
 }
