@@ -1,41 +1,52 @@
 #include <iostream>
 
 #include "chunk.h"
+#include "debug.h"
 #include "doctest.h"
 #include "test_utils.h"
 #include "value.h"
 #include "vm.h"
 
-InterpretResult VM::interpret(Chunk *chunk) {
-  this->chunk = chunk;
-  this->ip = chunk->data();
+VM::VM() { stack_top = stack; }
+
+InterpretResult VM::interpret(Chunk source) {
+  chunk = std::move(source);
+  ip = chunk.data();
   return run();
 }
 
 InterpretResult VM::run() {
   for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
-#include "debug.h"
-    disassemble_instruction(*this->chunk,
-                            (int)(this->ip - this->chunk->data()));
+    disassemble_instruction(chunk, static_cast<int>(ip - chunk.data()));
 #endif
 
-    uint8_t instr{};
-    switch (instr = *this->ip++) {
+    uint8_t instr = *ip++;
+    switch (instr) {
     case OP_RETURN: {
-      return INTERPRET_OK;
+      return InterpretResult::Ok;
     }
     case OP_CONSTANT: {
-      Value constant = this->chunk->get_constant(*this->ip++);
+      Value constant = chunk.get_constant(*ip++);
       print_value(constant);
-      std::cout << std::endl;
+      std::cout << '\n';
       break;
     }
     default:
-      std::cerr << "Unknown opcode: " << (int)instr << std::endl;
-      return INTERPRET_RUNTIME_ERROR;
+      std::cerr << "Unknown opcode: " << static_cast<int>(instr) << '\n';
+      return InterpretResult::RuntimeError;
     }
   }
+}
+
+void VM::push(Value value) {
+  *stack_top = value;
+  stack_top++;
+}
+
+Value VM::pop() {
+  stack_top--;
+  return *stack_top;
 }
 
 TEST_CASE("VM::interpret") {
@@ -44,7 +55,7 @@ TEST_CASE("VM::interpret") {
 
   SUBCASE("OP_RETURN returns INTERPRET_OK") {
     chunk.write(OP_RETURN, 1);
-    CHECK(vm.interpret(&chunk) == INTERPRET_OK);
+    CHECK(vm.interpret(std::move(chunk)) == InterpretResult::Ok);
   }
 
   SUBCASE("OP_CONSTANT prints value and returns INTERPRET_OK") {
@@ -52,9 +63,8 @@ TEST_CASE("VM::interpret") {
     chunk.write_constant(1.5, 1);
     chunk.write(OP_RETURN, 1);
 
-    std::string output = capture_stdout([&] {
-      CHECK(vm.interpret(&chunk) == INTERPRET_OK);
-    });
+    std::string output = capture_stdout(
+        [&] { CHECK(vm.interpret(std::move(chunk)) == InterpretResult::Ok); });
 
     CHECK(output.find("1.5") != std::string::npos);
   }
@@ -64,10 +74,10 @@ TEST_CASE("VM::interpret") {
 
     std::ostringstream captured_err;
     std::streambuf *old = std::cerr.rdbuf(captured_err.rdbuf());
-    InterpretResult result = vm.interpret(&chunk);
+    InterpretResult result = vm.interpret(std::move(chunk));
     std::cerr.rdbuf(old);
 
-    CHECK(result == INTERPRET_RUNTIME_ERROR);
+    CHECK(result == InterpretResult::RuntimeError);
   }
 
   SUBCASE("multiple constants before return all execute") {
@@ -77,9 +87,8 @@ TEST_CASE("VM::interpret") {
     chunk.write_constant(2.0, 1);
     chunk.write(OP_RETURN, 1);
 
-    std::string output = capture_stdout([&] {
-      CHECK(vm.interpret(&chunk) == INTERPRET_OK);
-    });
+    std::string output = capture_stdout(
+        [&] { CHECK(vm.interpret(std::move(chunk)) == InterpretResult::Ok); });
 
     CHECK(output.find("1") != std::string::npos);
     CHECK(output.find("2") != std::string::npos);

@@ -1,18 +1,25 @@
 #pragma once
 #include "chunk.h"
 
-enum InterpretResult {
-  INTERPRET_OK,
-  INTERPRET_COMPILE_ERROR,
-  INTERPRET_RUNTIME_ERROR,
+enum class InterpretResult {
+  Ok,
+  CompileError,
+  RuntimeError,
 };
 
 class VM {
-  Chunk *chunk{};
+  static constexpr int STACK_MAX = 256;
+
+  Chunk chunk{};
   const uint8_t *ip{};
+  Value stack[STACK_MAX]{};
+  Value *stack_top{};
 
   InterpretResult run();
+  void push(Value value);
+  Value pop();
 
 public:
-  InterpretResult interpret(Chunk *chunk);
+  VM();
+  InterpretResult interpret(Chunk chunk);
 };
