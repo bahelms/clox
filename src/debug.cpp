@@ -1,10 +1,8 @@
-#include <functional>
 #include <iostream>
-#include <sstream>
-#include <string>
 
 #include "debug.h"
 #include "doctest.h"
+#include "test_utils.h"
 #include "value.h"
 
 int simple_instruction(std::string_view, int);
@@ -53,14 +51,6 @@ int constant_instruction(std::string_view name, const Chunk &chunk,
   print_value(chunk.get_constant(constant_idx));
   std::cout << "'" << std::endl;
   return offset + 2;
-}
-
-static std::string capture_stdout(std::function<void()> fn) {
-  std::ostringstream captured;
-  std::streambuf *old = std::cout.rdbuf(captured.rdbuf());
-  fn();
-  std::cout.rdbuf(old);
-  return captured.str();
 }
 
 TEST_CASE("disassemble_chunk") {

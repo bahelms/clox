@@ -27,11 +27,67 @@ int Chunk::get_line(int instruction_index) const {
   return 0;
 }
 
+TEST_CASE("Chunk::write") {
+  Chunk chunk;
+
+  SUBCASE("writes byte into code and increases size") {
+    chunk.write(OP_RETURN, 1);
+    CHECK(chunk.size() == 1);
+    CHECK(chunk[0] == OP_RETURN);
+  }
+
+  SUBCASE("multiple writes accumulate in order") {
+    chunk.write(OP_CONSTANT, 1);
+    chunk.write(OP_RETURN, 1);
+    CHECK(chunk.size() == 2);
+    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[1] == OP_RETURN);
+  }
+
+  SUBCASE("data() points to the first byte") {
+    chunk.write(OP_RETURN, 1);
+    CHECK(*chunk.data() == OP_RETURN);
+  }
+}
+
+TEST_CASE("Chunk::get_line") {
+  Chunk chunk;
+
+  SUBCASE("returns the line a byte was written on") {
+    chunk.write(OP_RETURN, 42);
+    CHECK(chunk.get_line(0) == 42);
+  }
+
+  SUBCASE("returns 0 for an index with no matching line") {
+    CHECK(chunk.get_line(0) == 0);
+  }
+
+  SUBCASE("distinguishes instructions on different lines") {
+    chunk.write(OP_CONSTANT, 10);
+    chunk.write(OP_RETURN, 20);
+    CHECK(chunk.get_line(0) == 10);
+    CHECK(chunk.get_line(1) == 20);
+  }
+}
+
 TEST_CASE("Chunk::write_constant") {
   Chunk chunk;
 
-  SUBCASE("sets the constant with the line") {
+  SUBCASE("stores the value retrievable via get_constant") {
     chunk.write_constant(1.01, 6);
     CHECK(chunk.get_constant(0) == 1.01);
+  }
+
+  SUBCASE("writes the constant index as a byte into code") {
+    chunk.write_constant(1.01, 6);
+    CHECK(chunk.size() == 1);
+    CHECK(chunk[0] == 0);
+  }
+
+  SUBCASE("successive constants write increasing indices into code") {
+    chunk.write_constant(1.0, 1);
+    chunk.write_constant(2.0, 1);
+    CHECK(chunk[0] == 0);
+    CHECK(chunk[1] == 1);
   }
 }

@@ -14,6 +14,7 @@ class Chunk {
 public:
   uint8_t operator[](int offset) const { return code[offset]; }
   auto size() const { return code.size(); }
+  const uint8_t *data() const { return code.data(); }
 
   void write(uint8_t byte, int line);
   void write_constant(Value value, int line);
