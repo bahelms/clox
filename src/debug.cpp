@@ -53,6 +53,17 @@ int constant_instruction(std::string_view name, const Chunk &chunk,
   return offset + 2;
 }
 
+void print_stack(Value *stack, Value *stack_top) {
+  std::cout << "          ";
+  while (stack < stack_top) {
+    std::cout << "[ ";
+    print_value(*stack);
+    std::cout << " ]";
+    stack++;
+  }
+  std::cout << "\n";
+}
+
 TEST_CASE("disassemble_chunk") {
   Chunk chunk;
   chunk.write(OP_CONSTANT, 1);

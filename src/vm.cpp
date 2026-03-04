@@ -16,20 +16,21 @@ InterpretResult VM::interpret(Chunk source) {
 }
 
 InterpretResult VM::run() {
-  for (;;) {
+  while (true) {
 #ifdef DEBUG_TRACE_EXECUTION
+    print_stack(stack, stack_top);
     disassemble_instruction(chunk, static_cast<int>(ip - chunk.data()));
 #endif
 
     uint8_t instr = *ip++;
     switch (instr) {
     case OP_RETURN: {
+      print_value(pop());
+      std::cout << '\n';
       return InterpretResult::Ok;
     }
     case OP_CONSTANT: {
-      Value constant = chunk.get_constant(*ip++);
-      print_value(constant);
-      std::cout << '\n';
+      push(chunk.get_constant(*ip++));
       break;
     }
     default:
