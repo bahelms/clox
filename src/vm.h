@@ -18,8 +18,9 @@ class VM {
   InterpretResult run();
   void push(Value value);
   Value pop();
+  template <typename Op> void binary_op(Op op);
 
 public:
   VM();
-  InterpretResult interpret(Chunk chunk);
+  InterpretResult interpret(std::string source);
 };
