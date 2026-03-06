@@ -61,6 +61,19 @@ class Scanner {
   const char *start{};
   const char *current{};
 
+  bool is_at_end();
+  Token make_token(TokenType type);
+  char advance();
+  bool match(char expected);
+  void skip_whitespace();
+  char peek_next();
+  Token string();
+  Token number();
+  Token identifier();
+  TokenType identifier_type();
+  TokenType check_keyword(int start_idx, int length, const char *rest,
+                          TokenType type);
+
 public:
   Scanner(std::string_view source)
       : src(source), start(source.data()), current(source.data()) {}
