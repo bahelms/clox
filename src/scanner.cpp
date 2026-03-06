@@ -1,14 +1,16 @@
 #include <string>
+#include <vector>
 
+#include "doctest.h"
 #include "scanner.h"
 
-Token error_token(const char *msg, const int line) {
+static Token error_token(const char *msg, const int line) {
   return Token{TokenType::Error, msg, static_cast<int>(strlen(msg)), line};
 }
 
-bool is_digit(char ch) { return ch >= '0' && ch <= '9'; }
+static bool is_digit(char ch) { return ch >= '0' && ch <= '9'; }
 
-bool is_alpha(char ch) {
+static bool is_alpha(char ch) {
   return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
 }
 
@@ -163,7 +165,7 @@ TokenType Scanner::identifier_type() {
   case 'c':
     return check_keyword(1, 4, "lass", TokenType::Class);
   case 'e':
-    return check_keyword(1, 4, "lse", TokenType::Else);
+    return check_keyword(1, 3, "lse", TokenType::Else);
   case 'f':
     if (current - start > 1) {
       switch (start[1]) {
@@ -213,4 +215,195 @@ TokenType Scanner::check_keyword(int start_offset, int length, const char *rest,
     return type;
   }
   return TokenType::Identifier;
+}
+
+// Tests
+
+static std::vector<Token> scan_all(const std::string &source) {
+  Scanner scanner(source);
+  std::vector<Token> tokens;
+  while (true) {
+    Token token = scanner.scan_token();
+    tokens.push_back(token);
+    if (token.type == TokenType::Eof || token.type == TokenType::Error) {
+      break;
+    }
+  }
+  return tokens;
+}
+
+TEST_CASE("Scanner: single character tokens") {
+  auto tokens = scan_all("(){},.-+;/*");
+  REQUIRE(tokens.size() == 12);
+  CHECK(tokens[0].type == TokenType::LeftParen);
+  CHECK(tokens[1].type == TokenType::RightParen);
+  CHECK(tokens[2].type == TokenType::LeftBrace);
+  CHECK(tokens[3].type == TokenType::RightBrace);
+  CHECK(tokens[4].type == TokenType::Comma);
+  CHECK(tokens[5].type == TokenType::Dot);
+  CHECK(tokens[6].type == TokenType::Minus);
+  CHECK(tokens[7].type == TokenType::Plus);
+  CHECK(tokens[8].type == TokenType::Semicolon);
+  CHECK(tokens[9].type == TokenType::Slash);
+  CHECK(tokens[10].type == TokenType::Star);
+  CHECK(tokens[11].type == TokenType::Eof);
+}
+
+TEST_CASE("Scanner: one or two character tokens") {
+  SUBCASE("single character variants") {
+    auto tokens = scan_all("! = < >");
+    CHECK(tokens[0].type == TokenType::Bang);
+    CHECK(tokens[1].type == TokenType::Equal);
+    CHECK(tokens[2].type == TokenType::Less);
+    CHECK(tokens[3].type == TokenType::Greater);
+  }
+
+  SUBCASE("two character variants") {
+    auto tokens = scan_all("!= == <= >=");
+    CHECK(tokens[0].type == TokenType::BangEqual);
+    CHECK(tokens[1].type == TokenType::EqualEqual);
+    CHECK(tokens[2].type == TokenType::LessEqual);
+    CHECK(tokens[3].type == TokenType::GreaterEqual);
+  }
+}
+
+TEST_CASE("Scanner: string literals") {
+  SUBCASE("simple string") {
+    auto tokens = scan_all("\"hello\"");
+    REQUIRE(tokens.size() == 2);
+    CHECK(tokens[0].type == TokenType::String);
+    CHECK(std::string_view(tokens[0].start, tokens[0].length) == "\"hello\"");
+  }
+
+  SUBCASE("multiline string") {
+    auto tokens = scan_all("\"hello\nworld\"");
+    REQUIRE(tokens.size() == 2);
+    CHECK(tokens[0].type == TokenType::String);
+  }
+
+  SUBCASE("unterminated string") {
+    auto tokens = scan_all("\"hello");
+    CHECK(tokens.back().type == TokenType::Error);
+  }
+}
+
+TEST_CASE("Scanner: number literals") {
+  SUBCASE("integer") {
+    auto tokens = scan_all("123");
+    REQUIRE(tokens.size() == 2);
+    CHECK(tokens[0].type == TokenType::Number);
+    CHECK(std::string_view(tokens[0].start, tokens[0].length) == "123");
+  }
+
+  SUBCASE("decimal") {
+    auto tokens = scan_all("3.14");
+    REQUIRE(tokens.size() == 2);
+    CHECK(tokens[0].type == TokenType::Number);
+    CHECK(std::string_view(tokens[0].start, tokens[0].length) == "3.14");
+  }
+
+  SUBCASE("trailing dot is not part of number") {
+    auto tokens = scan_all("123.");
+    CHECK(tokens[0].type == TokenType::Number);
+    CHECK(std::string_view(tokens[0].start, tokens[0].length) == "123");
+    CHECK(tokens[1].type == TokenType::Dot);
+  }
+}
+
+TEST_CASE("Scanner: keywords") {
+  SUBCASE("all keywords") {
+    auto tokens = scan_all("and class else false for fun if nil or print "
+                           "return super this true var while");
+    CHECK(tokens[0].type == TokenType::And);
+    CHECK(tokens[1].type == TokenType::Class);
+    CHECK(tokens[2].type == TokenType::Else);
+    CHECK(tokens[3].type == TokenType::False);
+    CHECK(tokens[4].type == TokenType::For);
+    CHECK(tokens[5].type == TokenType::Fun);
+    CHECK(tokens[6].type == TokenType::If);
+    CHECK(tokens[7].type == TokenType::Nil);
+    CHECK(tokens[8].type == TokenType::Or);
+    CHECK(tokens[9].type == TokenType::Print);
+    CHECK(tokens[10].type == TokenType::Return);
+    CHECK(tokens[11].type == TokenType::Super);
+    CHECK(tokens[12].type == TokenType::This);
+    CHECK(tokens[13].type == TokenType::True);
+    CHECK(tokens[14].type == TokenType::Var);
+    CHECK(tokens[15].type == TokenType::While);
+  }
+
+  SUBCASE("keyword prefixes are identifiers") {
+    auto tokens = scan_all("android classy iffy");
+    CHECK(tokens[0].type == TokenType::Identifier);
+    CHECK(tokens[1].type == TokenType::Identifier);
+    CHECK(tokens[2].type == TokenType::Identifier);
+  }
+}
+
+TEST_CASE("Scanner: identifiers") {
+  auto tokens = scan_all("foo _bar baz123");
+  CHECK(tokens[0].type == TokenType::Identifier);
+  CHECK(std::string_view(tokens[0].start, tokens[0].length) == "foo");
+  CHECK(tokens[1].type == TokenType::Identifier);
+  CHECK(std::string_view(tokens[1].start, tokens[1].length) == "_bar");
+  CHECK(tokens[2].type == TokenType::Identifier);
+  CHECK(std::string_view(tokens[2].start, tokens[2].length) == "baz123");
+}
+
+TEST_CASE("Scanner: whitespace handling") {
+  SUBCASE("spaces and tabs are skipped") {
+    auto tokens = scan_all("  \t  +  \t  -");
+    CHECK(tokens[0].type == TokenType::Plus);
+    CHECK(tokens[1].type == TokenType::Minus);
+  }
+
+  SUBCASE("newlines increment line count") {
+    auto tokens = scan_all("\n\n+");
+    CHECK(tokens[0].type == TokenType::Plus);
+    CHECK(tokens[0].line == 3);
+  }
+}
+
+TEST_CASE("Scanner: comments") {
+  SUBCASE("line comment is skipped") {
+    auto tokens = scan_all("+ // this is a comment\n-");
+    CHECK(tokens[0].type == TokenType::Plus);
+    CHECK(tokens[1].type == TokenType::Minus);
+  }
+
+  SUBCASE("comment at end of input") {
+    auto tokens = scan_all("+ // comment");
+    CHECK(tokens[0].type == TokenType::Plus);
+    CHECK(tokens[1].type == TokenType::Eof);
+  }
+}
+
+TEST_CASE("Scanner: eof") {
+  auto tokens = scan_all("");
+  REQUIRE(tokens.size() == 1);
+  CHECK(tokens[0].type == TokenType::Eof);
+}
+
+TEST_CASE("Scanner: unexpected character") {
+  auto tokens = scan_all("@");
+  CHECK(tokens.back().type == TokenType::Error);
+}
+
+TEST_CASE("Scanner: line tracking") {
+  auto tokens = scan_all("var x = 1;\nvar y = 2;");
+  CHECK(tokens[0].line == 1);
+  CHECK(tokens[4].line == 1);
+  CHECK(tokens[5].line == 2);
+}
+
+TEST_CASE("Scanner: complex expression") {
+  auto tokens = scan_all("var x = 1 + 2.5;");
+  CHECK(tokens[0].type == TokenType::Var);
+  CHECK(tokens[1].type == TokenType::Identifier);
+  CHECK(tokens[2].type == TokenType::Equal);
+  CHECK(tokens[3].type == TokenType::Number);
+  CHECK(tokens[4].type == TokenType::Plus);
+  CHECK(tokens[5].type == TokenType::Number);
+  CHECK(tokens[6].type == TokenType::Semicolon);
+  CHECK(tokens[7].type == TokenType::Eof);
 }

@@ -9,8 +9,9 @@ void compile(std::string source) {
 
   while (true) {
     Token token = scanner.scan_token();
+
     if (token.line != line) {
-      std::cout << std::format("{:4d}", token.line);
+      std::cout << std::format("{:4d} ", token.line);
       line = token.line;
     } else {
       std::cout << "   | ";
@@ -18,5 +19,9 @@ void compile(std::string source) {
     std::cout << static_cast<int>(token.type) << " "
               << std::format("'{}'\n",
                              std::string_view(token.start, token.length));
+
+    if (token.type == TokenType::Eof) {
+      break;
+    }
   }
 }

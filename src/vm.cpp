@@ -72,35 +72,11 @@ template <typename Op> void VM::binary_op(Op op) {
   push(op(a, b));
 }
 
-// TEST_CASE("VM::interpret") {
-//   VM vm{};
-//   Chunk chunk;
+TEST_CASE("VM::interpret") {
+  VM vm{};
 
-//   SUBCASE("OP_RETURN returns INTERPRET_OK") {
-//     chunk.write(OP_RETURN, 1);
-//     CHECK(vm.interpret(std::move(chunk)) == InterpretResult::Ok);
-//   }
-
-//   SUBCASE("OP_CONSTANT prints value and returns INTERPRET_OK") {
-//     chunk.write(OP_CONSTANT, 1);
-//     chunk.write_constant(1.5, 1);
-//     chunk.write(OP_RETURN, 1);
-
-//     std::string output = capture_stdout(
-//         [&] { CHECK(vm.interpret(std::move(chunk)) == InterpretResult::Ok);
-//         });
-
-//     CHECK(output.find("1.5") != std::string::npos);
-//   }
-
-//   SUBCASE("unknown opcode returns INTERPRET_RUNTIME_ERROR") {
-//     chunk.write(255, 1);
-
-//     std::ostringstream captured_err;
-//     std::streambuf *old = std::cerr.rdbuf(captured_err.rdbuf());
-//     InterpretResult result = vm.interpret(std::move(chunk));
-//     std::cerr.rdbuf(old);
-
-//     CHECK(result == InterpretResult::RuntimeError);
-//   }
-// }
+  SUBCASE("returns Ok") {
+    std::string output =
+        capture_stdout([&] { CHECK(vm.interpret("1 + 2") == InterpretResult::Ok); });
+  }
+}
