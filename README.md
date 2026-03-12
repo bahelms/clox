@@ -1,7 +1,7 @@
 ## Dev
 Build:
 ```
-cmake -B build -DDEBUG_TRACE_EXECUTION=ON
+cmake -B build -DDEBUG_TRACE_EXECUTION=ON -DDEBUG_PRINT_CODE=ON
 ```
 
 Compile:

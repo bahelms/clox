@@ -25,7 +25,7 @@ public:
   const uint8_t *data() const { return code.data(); }
 
   void write(uint8_t byte, int line);
-  void write_constant(Value value, int line);
+  uint8_t write_constant(Value value);
   Value get_constant(int index) const;
   int get_line(int instruction_index) const;
 };

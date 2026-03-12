@@ -7,10 +7,9 @@ void Chunk::write(uint8_t byte, int line) {
   instruction_line_map[line].push_back(instruction_index);
 }
 
-void Chunk::write_constant(Value value, int line) {
+uint8_t Chunk::write_constant(Value value) {
   constants.push_back(value);
-  int index = constants.size() - 1;
-  write(index, line);
+  return constants.size() - 1;
 }
 
 Value Chunk::get_constant(int index) const { return constants[index]; }
@@ -74,20 +73,17 @@ TEST_CASE("Chunk::write_constant") {
   Chunk chunk;
 
   SUBCASE("stores the value retrievable via get_constant") {
-    chunk.write_constant(1.01, 6);
+    chunk.write_constant(1.01);
     CHECK(chunk.get_constant(0) == 1.01);
   }
 
-  SUBCASE("writes the constant index as a byte into code") {
-    chunk.write_constant(1.01, 6);
-    CHECK(chunk.size() == 1);
-    CHECK(chunk[0] == 0);
+  SUBCASE("does not write anything to code") {
+    chunk.write_constant(1.01);
+    CHECK(chunk.size() == 0);
   }
 
-  SUBCASE("successive constants write increasing indices into code") {
-    chunk.write_constant(1.0, 1);
-    chunk.write_constant(2.0, 1);
-    CHECK(chunk[0] == 0);
-    CHECK(chunk[1] == 1);
+  SUBCASE("successive constants return increasing indices") {
+    CHECK(chunk.write_constant(1.0) == 0);
+    CHECK(chunk.write_constant(2.0) == 1);
   }
 }

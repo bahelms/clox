@@ -3,17 +3,24 @@
 
 #include "chunk.h"
 #include "compiler.h"
-#include "debug.h"
 #include "doctest.h"
 #include "test_utils.h"
 #include "value.h"
 #include "vm.h"
 
+#ifdef DEBUG_TRACE_EXECUTION
+#include "debug.h"
+#endif
+
 VM::VM() { stack_top = stack; }
 
 InterpretResult VM::interpret(std::string source) {
-  compile(source);
-  return InterpretResult::Ok;
+  Compiler compiler{source};
+  if (!compiler.compile(chunk)) {
+    return InterpretResult::CompileError;
+  }
+  ip = chunk.data();
+  return run();
 }
 
 InterpretResult VM::run() {
@@ -76,7 +83,7 @@ TEST_CASE("VM::interpret") {
   VM vm{};
 
   SUBCASE("returns Ok") {
-    std::string output =
-        capture_stdout([&] { CHECK(vm.interpret("1 + 2") == InterpretResult::Ok); });
+    std::string output = capture_stdout(
+        [&] { CHECK(vm.interpret("1 + 2") == InterpretResult::Ok); });
   }
 }

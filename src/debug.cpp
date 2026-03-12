@@ -78,7 +78,7 @@ void print_stack(Value *stack, Value *stack_top) {
 TEST_CASE("disassemble_chunk") {
   Chunk chunk;
   chunk.write(OP_CONSTANT, 1);
-  chunk.write_constant(1.5, 1);
+  chunk.write(chunk.write_constant(1.5), 1);
   chunk.write(OP_RETURN, 2);
 
   std::string output =
@@ -105,7 +105,7 @@ TEST_CASE("disassemble_instruction") {
   SUBCASE("OP_CONSTANT advances offset by 2") {
     Chunk chunk;
     chunk.write(OP_CONSTANT, 1);
-    chunk.write_constant(3.14, 1);
+    chunk.write(chunk.write_constant(3.14), 1);
 
     std::string output = capture_stdout([&] {
       int next_offset = disassemble_instruction(chunk, 0);
