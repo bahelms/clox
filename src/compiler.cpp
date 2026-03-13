@@ -159,3 +159,74 @@ uint8_t Compiler::make_constant(Value value) {
   }
   return index;
 }
+
+#include "doctest.h"
+
+static Chunk compile_source(std::string_view src) {
+  Chunk chunk;
+  Compiler compiler(src);
+  compiler.compile(chunk);
+  return chunk;
+}
+
+TEST_CASE("Compiler: number literal") {
+  auto chunk = compile_source("1.5");
+  CHECK(chunk[0] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[1]) == 1.5);
+  CHECK(chunk[2] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: negation") {
+  auto chunk = compile_source("-2");
+  CHECK(chunk[0] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[1]) == 2.0);
+  CHECK(chunk[2] == OP_NEGATE);
+  CHECK(chunk[3] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: binary operations") {
+  SUBCASE("addition") {
+    auto chunk = compile_source("1 + 2");
+    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[2] == OP_CONSTANT);
+    CHECK(chunk[4] == OP_ADD);
+    CHECK(chunk[5] == OP_RETURN);
+  }
+  SUBCASE("subtraction") {
+    auto chunk = compile_source("5 - 3");
+    CHECK(chunk[4] == OP_SUBTRACT);
+  }
+  SUBCASE("multiplication") {
+    auto chunk = compile_source("2 * 4");
+    CHECK(chunk[4] == OP_MULTIPLY);
+  }
+  SUBCASE("division") {
+    auto chunk = compile_source("8 / 2");
+    CHECK(chunk[4] == OP_DIVIDE);
+  }
+}
+
+TEST_CASE("Compiler: grouping") {
+  auto chunk = compile_source("(3 * 4) + 2");
+  CHECK(chunk[0] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[1]) == 3.0);
+  CHECK(chunk[2] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[3]) == 4.0);
+  CHECK(chunk[4] == OP_MULTIPLY);
+  CHECK(chunk[5] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[6]) == 2.0);
+  CHECK(chunk[7] == OP_ADD);
+  CHECK(chunk[8] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: operator precedence") {
+  auto chunk = compile_source("1 + 2 * 3");
+  CHECK(chunk[6] == OP_MULTIPLY);
+  CHECK(chunk[7] == OP_ADD);
+}
+
+TEST_CASE("Compiler: compile returns false on error") {
+  Chunk chunk;
+  Compiler compiler("@");
+  CHECK(compiler.compile(chunk) == false);
+}
