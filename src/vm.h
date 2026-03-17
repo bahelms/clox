@@ -1,4 +1,6 @@
 #pragma once
+#include <iostream>
+
 #include "chunk.h"
 
 enum class InterpretResult {
@@ -18,7 +20,14 @@ class VM {
   InterpretResult run();
   void push(Value value);
   Value pop();
-  template <typename Op> void binary_op(Op op);
+  Value peek(int distance);
+  void reset_stack();
+
+  template <typename ValueBuilder, typename Op>
+  InterpretResult binary_op(ValueBuilder builder, Op op);
+
+  template <typename... Args>
+  void runtime_error(std::format_string<Args...> fmt, Args &&...args);
 
 public:
   VM();

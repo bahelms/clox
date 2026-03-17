@@ -73,17 +73,17 @@ TEST_CASE("Chunk::write_constant") {
   Chunk chunk;
 
   SUBCASE("stores the value retrievable via get_constant") {
-    chunk.write_constant(1.01);
-    CHECK(chunk.get_constant(0) == 1.01);
+    chunk.write_constant(Value::number(1.01));
+    CHECK(chunk.get_constant(0).as_number() == 1.01);
   }
 
   SUBCASE("does not write anything to code") {
-    chunk.write_constant(1.01);
+    chunk.write_constant(Value::number(1.01));
     CHECK(chunk.size() == 0);
   }
 
   SUBCASE("successive constants return increasing indices") {
-    CHECK(chunk.write_constant(1.0) == 0);
-    CHECK(chunk.write_constant(2.0) == 1);
+    CHECK(chunk.write_constant(Value::number(1.0)) == 0);
+    CHECK(chunk.write_constant(Value::number(2.0)) == 1);
   }
 }

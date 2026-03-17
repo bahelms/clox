@@ -1,3 +1,4 @@
+#include <cstdarg>
 #include <functional>
 #include <iostream>
 
@@ -37,19 +38,24 @@ InterpretResult VM::run() {
       break;
     }
     case OP_ADD:
-      binary_op(std::plus<double>{});
+      binary_op(&Value::number, std::plus<double>{});
       break;
     case OP_SUBTRACT:
-      binary_op(std::minus<double>{});
+      binary_op(&Value::number, std::minus<double>{});
       break;
     case OP_MULTIPLY:
-      binary_op(std::multiplies<double>{});
+      binary_op(&Value::number, std::multiplies<double>{});
       break;
     case OP_DIVIDE:
-      binary_op(std::divides<double>{});
+      binary_op(&Value::number, std::divides<double>{});
       break;
     case OP_NEGATE:
-      *(stack_top - 1) = -*(stack_top - 1);
+      if (!peek(0).is_number()) {
+        runtime_error("Operand must be a number.");
+        return InterpretResult::RuntimeError;
+      }
+
+      push(Value::number(-pop().as_number()));
       break;
     case OP_RETURN: {
       print_value(pop());
@@ -73,10 +79,31 @@ Value VM::pop() {
   return *stack_top;
 }
 
-template <typename Op> void VM::binary_op(Op op) {
-  double b = pop();
-  double a = pop();
-  push(op(a, b));
+Value VM::peek(int distance) { return stack_top[-1 - distance]; }
+
+void VM::reset_stack() { stack_top = stack; }
+
+template <typename... Args>
+void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
+  std::cerr << std::format(fmt, std::forward<Args>(args)...) << '\n';
+
+  size_t instruction = ip - chunk.data() - 1;
+  int line = chunk.get_line(instruction);
+  std::cerr << std::format("[line %d] in script\n", line);
+  reset_stack();
+}
+
+template <typename ValueBuilder, typename Op>
+InterpretResult VM::binary_op(ValueBuilder builder, Op op) {
+  if (!peek(0).is_number() || !peek(1).is_number()) {
+    runtime_error("Operands must be numbers.");
+    return InterpretResult::RuntimeError;
+  }
+
+  double b = pop().as_number();
+  double a = pop().as_number();
+  push(builder(op(a, b)));
+  return InterpretResult::Ok;
 }
 
 TEST_CASE("VM::interpret") {

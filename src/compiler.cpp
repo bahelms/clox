@@ -96,7 +96,7 @@ void Compiler::unary() {
 
 void Compiler::number() {
   double value = strtod(parser.previous.start, NULL);
-  emit_constant(value);
+  emit_constant(Value::number(value));
 }
 
 void Compiler::grouping() {
@@ -172,14 +172,14 @@ static Chunk compile_source(std::string_view src) {
 TEST_CASE("Compiler: number literal") {
   auto chunk = compile_source("1.5");
   CHECK(chunk[0] == OP_CONSTANT);
-  CHECK(chunk.get_constant(chunk[1]) == 1.5);
+  CHECK(chunk.get_constant(chunk[1]).as_number() == 1.5);
   CHECK(chunk[2] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: negation") {
   auto chunk = compile_source("-2");
   CHECK(chunk[0] == OP_CONSTANT);
-  CHECK(chunk.get_constant(chunk[1]) == 2.0);
+  CHECK(chunk.get_constant(chunk[1]).as_number() == 2.0);
   CHECK(chunk[2] == OP_NEGATE);
   CHECK(chunk[3] == OP_RETURN);
 }
@@ -209,12 +209,12 @@ TEST_CASE("Compiler: binary operations") {
 TEST_CASE("Compiler: grouping") {
   auto chunk = compile_source("(3 * 4) + 2");
   CHECK(chunk[0] == OP_CONSTANT);
-  CHECK(chunk.get_constant(chunk[1]) == 3.0);
+  CHECK(chunk.get_constant(chunk[1]).as_number() == 3.0);
   CHECK(chunk[2] == OP_CONSTANT);
-  CHECK(chunk.get_constant(chunk[3]) == 4.0);
+  CHECK(chunk.get_constant(chunk[3]).as_number() == 4.0);
   CHECK(chunk[4] == OP_MULTIPLY);
   CHECK(chunk[5] == OP_CONSTANT);
-  CHECK(chunk.get_constant(chunk[6]) == 2.0);
+  CHECK(chunk.get_constant(chunk[6]).as_number() == 2.0);
   CHECK(chunk[7] == OP_ADD);
   CHECK(chunk[8] == OP_RETURN);
 }
