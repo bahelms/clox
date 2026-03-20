@@ -71,11 +71,23 @@ InterpretResult VM::run() {
       push(Value::boolean(values_equal(a, b)));
       break;
     }
+    case OP_NOT_EQUAL: {
+      Value b = pop();
+      Value a = pop();
+      push(Value::boolean(!values_equal(a, b)));
+      break;
+    }
     case OP_GREATER:
       binary_op(&Value::boolean, std::greater<double>{});
       break;
+    case OP_GREATER_EQUAL:
+      binary_op(&Value::boolean, std::greater_equal<double>{});
+      break;
     case OP_LESS:
       binary_op(&Value::boolean, std::less<double>{});
+      break;
+    case OP_LESS_EQUAL:
+      binary_op(&Value::boolean, std::less_equal<double>{});
       break;
     case OP_ADD:
       binary_op(&Value::number, std::plus<double>{});

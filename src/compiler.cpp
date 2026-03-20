@@ -104,7 +104,7 @@ void Compiler::binary() {
 
   switch (operator_type) {
   case TokenType::BangEqual:
-    emit_bytes(OP_EQUAL, OP_NOT);
+    emit_byte(OP_NOT_EQUAL);
     break;
   case TokenType::EqualEqual:
     emit_byte(OP_EQUAL);
@@ -113,13 +113,13 @@ void Compiler::binary() {
     emit_byte(OP_GREATER);
     break;
   case TokenType::GreaterEqual:
-    emit_bytes(OP_LESS, OP_NOT);
+    emit_byte(OP_GREATER_EQUAL);
     break;
   case TokenType::Less:
     emit_byte(OP_LESS);
     break;
   case TokenType::LessEqual:
-    emit_bytes(OP_GREATER, OP_NOT);
+    emit_byte(OP_LESS_EQUAL);
     break;
   case TokenType::Plus:
     emit_byte(OP_ADD);
@@ -277,6 +277,24 @@ TEST_CASE("Compiler: boolean and nil literals") {
     auto chunk = compile_source("nil");
     CHECK(chunk[0] == OP_NIL);
     CHECK(chunk[1] == OP_RETURN);
+  }
+}
+
+TEST_CASE("Compiler: comparison operators emit single opcodes") {
+  SUBCASE("!=") {
+    auto chunk = compile_source("1 != 2");
+    CHECK(chunk[4] == OP_NOT_EQUAL);
+    CHECK(chunk[5] == OP_RETURN);
+  }
+  SUBCASE(">=") {
+    auto chunk = compile_source("1 >= 2");
+    CHECK(chunk[4] == OP_GREATER_EQUAL);
+    CHECK(chunk[5] == OP_RETURN);
+  }
+  SUBCASE("<=") {
+    auto chunk = compile_source("1 <= 2");
+    CHECK(chunk[4] == OP_LESS_EQUAL);
+    CHECK(chunk[5] == OP_RETURN);
   }
 }
 
