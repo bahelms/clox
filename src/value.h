@@ -1,7 +1,7 @@
 #pragma once
 
 enum class ValueType {
-  Bool,
+  Boolean,
   Nil,
   Number,
 };
@@ -14,9 +14,9 @@ struct Value {
     double number;
   } as;
 
-  static Value boolean(bool v) { return {ValueType::Bool, {.boolean = v}}; }
+  static Value boolean(bool v) { return {ValueType::Boolean, {.boolean = v}}; }
   double as_boolean() const { return as.boolean; }
-  bool is_boolean() { return type == ValueType::Bool; }
+  bool is_boolean() { return type == ValueType::Boolean; }
 
   static Value nil() { return {ValueType::Nil, {.number = 0}}; }
   bool is_nil() { return type == ValueType::Nil; }

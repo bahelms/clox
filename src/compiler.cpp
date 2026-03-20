@@ -20,31 +20,31 @@ ParseRule rules[] = {
     {NULL, NULL, Precedence::None},                          // Semicolon
     {NULL, &Compiler::binary, Precedence::Factor},           // Slash
     {NULL, &Compiler::binary, Precedence::Factor},           // Star
-    {NULL, NULL, Precedence::None},                          // Bang
-    {NULL, NULL, Precedence::None},                          // BangEqual
+    {&Compiler::unary, NULL, Precedence::None},              // Bang
+    {NULL, &Compiler::binary, Precedence::Equality},         // BangEqual
     {NULL, NULL, Precedence::None},                          // Equal
-    {NULL, NULL, Precedence::None},                          // EqualEqual
-    {NULL, NULL, Precedence::None},                          // Greater
-    {NULL, NULL, Precedence::None},                          // GreaterEqual
-    {NULL, NULL, Precedence::None},                          // Less
-    {NULL, NULL, Precedence::None},                          // LessEqual
+    {NULL, &Compiler::binary, Precedence::Equality},         // EqualEqual
+    {NULL, &Compiler::binary, Precedence::Comparison},       // Greater
+    {NULL, &Compiler::binary, Precedence::Comparison},       // GreaterEqual
+    {NULL, &Compiler::binary, Precedence::Comparison},       // Less
+    {NULL, &Compiler::binary, Precedence::Comparison},       // LessEqual
     {NULL, NULL, Precedence::None},                          // Identifier
     {NULL, NULL, Precedence::None},                          // String
     {&Compiler::number, NULL, Precedence::None},             // Number
     {NULL, NULL, Precedence::None},                          // And
     {NULL, NULL, Precedence::None},                          // Class
     {NULL, NULL, Precedence::None},                          // Else
-    {NULL, NULL, Precedence::None},                          // False
+    {&Compiler::literal, NULL, Precedence::None},            // False
     {NULL, NULL, Precedence::None},                          // For
     {NULL, NULL, Precedence::None},                          // Fun
     {NULL, NULL, Precedence::None},                          // If
-    {NULL, NULL, Precedence::None},                          // Nil
+    {&Compiler::literal, NULL, Precedence::None},            // Nil
     {NULL, NULL, Precedence::None},                          // Or
     {NULL, NULL, Precedence::None},                          // Print
     {NULL, NULL, Precedence::None},                          // Return
     {NULL, NULL, Precedence::None},                          // Super
     {NULL, NULL, Precedence::None},                          // This
-    {NULL, NULL, Precedence::None},                          // True
+    {&Compiler::literal, NULL, Precedence::None},            // True
     {NULL, NULL, Precedence::None},                          // Var
     {NULL, NULL, Precedence::None},                          // While
     {NULL, NULL, Precedence::None},                          // Error
@@ -89,6 +89,50 @@ void Compiler::unary() {
   case TokenType::Minus:
     emit_byte(OP_NEGATE);
     break;
+  case TokenType::Bang:
+    emit_byte(OP_NOT);
+    break;
+  default:
+    return;
+  }
+}
+
+void Compiler::binary() {
+  TokenType operator_type = parser.previous_type();
+  const ParseRule &rule = get_rule(operator_type);
+  parse_precedence(rule.precedence + 1);
+
+  switch (operator_type) {
+  case TokenType::BangEqual:
+    emit_bytes(OP_EQUAL, OP_NOT);
+    break;
+  case TokenType::EqualEqual:
+    emit_byte(OP_EQUAL);
+    break;
+  case TokenType::Greater:
+    emit_byte(OP_GREATER);
+    break;
+  case TokenType::GreaterEqual:
+    emit_bytes(OP_LESS, OP_NOT);
+    break;
+  case TokenType::Less:
+    emit_byte(OP_LESS);
+    break;
+  case TokenType::LessEqual:
+    emit_bytes(OP_GREATER, OP_NOT);
+    break;
+  case TokenType::Plus:
+    emit_byte(OP_ADD);
+    break;
+  case TokenType::Minus:
+    emit_byte(OP_SUBTRACT);
+    break;
+  case TokenType::Star:
+    emit_byte(OP_MULTIPLY);
+    break;
+  case TokenType::Slash:
+    emit_byte(OP_DIVIDE);
+    break;
   default:
     return;
   }
@@ -104,23 +148,16 @@ void Compiler::grouping() {
   parser.consume(TokenType::RightParen, "Expect ')' after expression.");
 }
 
-void Compiler::binary() {
-  TokenType operator_type = parser.previous_type();
-  const ParseRule &rule = get_rule(operator_type);
-  parse_precedence(rule.precedence + 1);
-
-  switch (operator_type) {
-  case TokenType::Plus:
-    emit_byte(OP_ADD);
+void Compiler::literal() {
+  switch (parser.previous_type()) {
+  case TokenType::False:
+    emit_byte(OP_FALSE);
     break;
-  case TokenType::Minus:
-    emit_byte(OP_SUBTRACT);
+  case TokenType::Nil:
+    emit_byte(OP_NIL);
     break;
-  case TokenType::Star:
-    emit_byte(OP_MULTIPLY);
-    break;
-  case TokenType::Slash:
-    emit_byte(OP_DIVIDE);
+  case TokenType::True:
+    emit_byte(OP_TRUE);
     break;
   default:
     return;
@@ -223,6 +260,24 @@ TEST_CASE("Compiler: operator precedence") {
   auto chunk = compile_source("1 + 2 * 3");
   CHECK(chunk[6] == OP_MULTIPLY);
   CHECK(chunk[7] == OP_ADD);
+}
+
+TEST_CASE("Compiler: boolean and nil literals") {
+  SUBCASE("false") {
+    auto chunk = compile_source("false");
+    CHECK(chunk[0] == OP_FALSE);
+    CHECK(chunk[1] == OP_RETURN);
+  }
+  SUBCASE("true") {
+    auto chunk = compile_source("true");
+    CHECK(chunk[0] == OP_TRUE);
+    CHECK(chunk[1] == OP_RETURN);
+  }
+  SUBCASE("nil") {
+    auto chunk = compile_source("nil");
+    CHECK(chunk[0] == OP_NIL);
+    CHECK(chunk[1] == OP_RETURN);
+  }
 }
 
 TEST_CASE("Compiler: compile returns false on error") {

@@ -13,6 +13,25 @@
 #include "debug.h"
 #endif
 
+static bool is_falsey(Value value) {
+  return value.is_nil() || (value.is_boolean() && !value.as_boolean());
+}
+
+static bool values_equal(Value a, Value b) {
+  if (a.type != b.type) {
+    return false;
+  }
+
+  switch (a.type) {
+  case ValueType::Boolean:
+    return a.as_boolean() == b.as_boolean();
+  case ValueType::Number:
+    return a.as_number() == b.as_number();
+  case ValueType::Nil:
+    return true;
+  }
+}
+
 VM::VM() { stack_top = stack; }
 
 InterpretResult VM::interpret(std::string source) {
@@ -37,6 +56,27 @@ InterpretResult VM::run() {
       push(chunk.get_constant(*ip++));
       break;
     }
+    case OP_NIL:
+      push(Value::nil());
+      break;
+    case OP_TRUE:
+      push(Value::boolean(true));
+      break;
+    case OP_FALSE:
+      push(Value::boolean(false));
+      break;
+    case OP_EQUAL: {
+      Value b = pop();
+      Value a = pop();
+      push(Value::boolean(values_equal(a, b)));
+      break;
+    }
+    case OP_GREATER:
+      binary_op(&Value::boolean, std::greater<double>{});
+      break;
+    case OP_LESS:
+      binary_op(&Value::boolean, std::less<double>{});
+      break;
     case OP_ADD:
       binary_op(&Value::number, std::plus<double>{});
       break;
@@ -48,6 +88,9 @@ InterpretResult VM::run() {
       break;
     case OP_DIVIDE:
       binary_op(&Value::number, std::divides<double>{});
+      break;
+    case OP_NOT:
+      push(Value::boolean(is_falsey(pop())));
       break;
     case OP_NEGATE:
       if (!peek(0).is_number()) {
@@ -89,7 +132,7 @@ void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
 
   size_t instruction = ip - chunk.data() - 1;
   int line = chunk.get_line(instruction);
-  std::cerr << std::format("[line %d] in script\n", line);
+  std::cerr << std::format("[line {}] in script\n", line);
   reset_stack();
 }
 
@@ -112,5 +155,11 @@ TEST_CASE("VM::interpret") {
   SUBCASE("returns Ok") {
     std::string output = capture_stdout(
         [&] { CHECK(vm.interpret("1 + 2") == InterpretResult::Ok); });
+  }
+
+  SUBCASE("equality with mixed types") {
+    std::string output = capture_stdout(
+        [&] { CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok); });
+    CHECK(output == "true\n");
   }
 }
