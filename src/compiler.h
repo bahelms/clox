@@ -46,6 +46,7 @@ public:
   void binary();
   void number();
   void literal();
+  void string();
 };
 
 using ParseFn = void (Compiler::*)();

@@ -13,25 +13,6 @@
 #include "debug.h"
 #endif
 
-static bool is_falsey(Value value) {
-  return value.is_nil() || (value.is_boolean() && !value.as_boolean());
-}
-
-static bool values_equal(Value a, Value b) {
-  if (a.type != b.type) {
-    return false;
-  }
-
-  switch (a.type) {
-  case ValueType::Boolean:
-    return a.as_boolean() == b.as_boolean();
-  case ValueType::Number:
-    return a.as_number() == b.as_number();
-  case ValueType::Nil:
-    return true;
-  }
-}
-
 VM::VM() { stack_top = stack; }
 
 InterpretResult VM::interpret(std::string source) {
@@ -90,7 +71,18 @@ InterpretResult VM::run() {
       binary_op(&Value::boolean, std::less_equal<double>{});
       break;
     case OP_ADD:
-      binary_op(&Value::number, std::plus<double>{});
+      if (peek(0).is_string() && peek(1).is_string()) {
+        ObjString *str_b = pop().as_string();
+        ObjString *str_a = pop().as_string();
+        push(Value::object(ObjString(str_a->chars + str_b->chars)));
+      } else if (peek(0).is_number() && peek(1).is_number()) {
+        double b = pop().as_number();
+        double a = pop().as_number();
+        push(Value::number(a + b));
+      } else {
+        runtime_error("Operands must be numbers or strings.");
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_SUBTRACT:
       binary_op(&Value::number, std::minus<double>{});
@@ -170,8 +162,17 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("equality with mixed types") {
-    std::string output = capture_stdout(
-        [&] { CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok); });
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok);
+    });
     CHECK(output == "true\n");
+  }
+
+  SUBCASE("string concatenation") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("\"hello\" + \" \" + \"world\"") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "hello world\n");
   }
 }

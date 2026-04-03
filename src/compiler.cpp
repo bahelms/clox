@@ -29,7 +29,7 @@ ParseRule rules[] = {
     {NULL, &Compiler::binary, Precedence::Comparison},       // Less
     {NULL, &Compiler::binary, Precedence::Comparison},       // LessEqual
     {NULL, NULL, Precedence::None},                          // Identifier
-    {NULL, NULL, Precedence::None},                          // String
+    {&Compiler::string, NULL, Precedence::None},             // String
     {&Compiler::number, NULL, Precedence::None},             // Number
     {NULL, NULL, Precedence::None},                          // And
     {NULL, NULL, Precedence::None},                          // Class
@@ -162,6 +162,11 @@ void Compiler::literal() {
   default:
     return;
   }
+}
+
+void Compiler::string() {
+  emit_constant(Value::object(ObjString(
+      std::string(parser.previous.start + 1, parser.previous.length - 2))));
 }
 
 void Compiler::end() {

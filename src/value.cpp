@@ -4,10 +4,34 @@
 #include "doctest.h"
 #include "test_utils.h"
 
+bool is_falsey(Value value) {
+  return value.is_nil() || (value.is_boolean() && !value.as_boolean());
+}
+
+bool values_equal(Value a, Value b) {
+  if (a.type != b.type) {
+    return false;
+  }
+
+  switch (a.type) {
+  case ValueType::Boolean:
+    return a.as_boolean() == b.as_boolean();
+  case ValueType::Number:
+    return a.as_number() == b.as_number();
+  case ValueType::Object:
+    return a.as_string()->chars == b.as_string()->chars;
+  case ValueType::Nil:
+    return true;
+  }
+}
+
 void print_value(Value value) {
   switch (value.type) {
   case ValueType::Number:
     std::cout << std::format("{:g}", value.as_number());
+    break;
+  case ValueType::Object:
+    print_object(value);
     break;
   case ValueType::Nil:
     std::cout << "nil";
