@@ -23,10 +23,13 @@ inline Precedence operator+(Precedence p, int n) {
   return static_cast<Precedence>(static_cast<int>(p) + n);
 }
 
+class VM;
+
 class Compiler {
   std::string_view source{};
   Parser parser;
   Chunk *current_chunk{};
+  VM &vm;
 
   void end();
   void emit_return();
@@ -39,7 +42,7 @@ class Compiler {
   void parse_precedence(Precedence precedence);
 
 public:
-  Compiler(std::string_view src) : source(src), parser(src) {};
+  Compiler(std::string_view src, VM &vm) : source(src), parser(src), vm(vm) {};
   bool compile(Chunk &chunk);
   void grouping();
   void unary();

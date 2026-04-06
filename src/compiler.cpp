@@ -3,6 +3,7 @@
 #include "chunk.h"
 #include "compiler.h"
 #include "scanner.h"
+#include "vm.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -165,8 +166,9 @@ void Compiler::literal() {
 }
 
 void Compiler::string() {
-  emit_constant(Value::object(ObjString(
-      std::string(parser.previous.start + 1, parser.previous.length - 2))));
+  ObjString *str = vm.alloc_string(
+      std::string(parser.previous.start + 1, parser.previous.length - 2));
+  emit_constant(Value::object(str));
 }
 
 void Compiler::end() {
@@ -206,7 +208,8 @@ uint8_t Compiler::make_constant(Value value) {
 
 static Chunk compile_source(std::string_view src) {
   Chunk chunk;
-  Compiler compiler(src);
+  VM vm;
+  Compiler compiler(src, vm);
   compiler.compile(chunk);
   return chunk;
 }
@@ -305,6 +308,7 @@ TEST_CASE("Compiler: comparison operators emit single opcodes") {
 
 TEST_CASE("Compiler: compile returns false on error") {
   Chunk chunk;
-  Compiler compiler("@");
+  VM vm;
+  Compiler compiler("@", vm);
   CHECK(compiler.compile(chunk) == false);
 }

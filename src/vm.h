@@ -11,11 +11,11 @@ enum class InterpretResult {
 
 class VM {
   static constexpr int STACK_MAX = 256;
-
   Chunk chunk{};
   const uint8_t *ip{};
   Value stack[STACK_MAX]{};
   Value *stack_top{};
+  Object *objects{};
 
   InterpretResult run();
   void push(Value value);
@@ -31,5 +31,7 @@ class VM {
 
 public:
   VM();
+  ~VM();
   InterpretResult interpret(std::string source);
+  ObjString *alloc_string(std::string s);
 };

@@ -29,8 +29,8 @@ struct Value {
 
   // static Value object(Object *v) { return {ValueType::Object, {.object = v}};
   // }
-  static Value object(ObjString &&obj_str) {
-    return {ValueType::Object, {.object = new ObjString(std::move(obj_str))}};
+  static Value object(ObjString *obj_str) {
+    return {ValueType::Object, {.object = obj_str}};
   }
   Object *as_object() const { return as.object; }
   bool is_object() { return type == ValueType::Object; }

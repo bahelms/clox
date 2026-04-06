@@ -15,8 +15,17 @@
 
 VM::VM() { stack_top = stack; }
 
+VM::~VM() {
+  Object *obj = objects;
+  while (obj != nullptr) {
+    Object *next = obj->next;
+    delete obj;
+    obj = next;
+  }
+}
+
 InterpretResult VM::interpret(std::string source) {
-  Compiler compiler{source};
+  Compiler compiler{source, *this};
   if (!compiler.compile(chunk)) {
     return InterpretResult::CompileError;
   }
@@ -74,7 +83,7 @@ InterpretResult VM::run() {
       if (peek(0).is_string() && peek(1).is_string()) {
         ObjString *str_b = pop().as_string();
         ObjString *str_a = pop().as_string();
-        push(Value::object(ObjString(str_a->chars + str_b->chars)));
+        push(Value::object(alloc_string(str_a->chars + str_b->chars)));
       } else if (peek(0).is_number() && peek(1).is_number()) {
         double b = pop().as_number();
         double a = pop().as_number();
@@ -129,6 +138,13 @@ Value VM::pop() {
 Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 
 void VM::reset_stack() { stack_top = stack; }
+
+ObjString *VM::alloc_string(std::string s) {
+  auto *obj = new ObjString(std::move(s));
+  obj->next = objects;
+  objects = obj;
+  return obj;
+}
 
 template <typename... Args>
 void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
