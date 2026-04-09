@@ -25,10 +25,12 @@ VM::~VM() {
 }
 
 InterpretResult VM::interpret(std::string source) {
+  Chunk new_chunk{};
   Compiler compiler{source, *this};
-  if (!compiler.compile(chunk)) {
+  if (!compiler.compile(new_chunk)) {
     return InterpretResult::CompileError;
   }
+  chunk = std::move(new_chunk);
   ip = chunk.data();
   return run();
 }
