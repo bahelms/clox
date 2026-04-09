@@ -3,19 +3,19 @@
 #include <fstream>
 #include <iostream>
 
+#include "vendors/linenoise.h"
 #include "vm.h"
 
 namespace {
 void repl() {
   VM vm{};
-  std::string line;
-  while (true) {
-    std::cout << "> ";
-    if (!std::getline(std::cin, line)) {
-      std::cout << '\n';
-      break;
+  char *line;
+  while ((line = linenoise("> ")) != nullptr) {
+    if (line[0] != '\0') {
+      linenoiseHistoryAdd(line);
     }
-    vm.interpret(line);
+    vm.interpret(std::string(line));
+    linenoiseFree(line);
   }
 }
 
