@@ -140,9 +140,14 @@ Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 void VM::reset_stack() { stack_top = stack; }
 
 ObjString *VM::alloc_string(std::string s) {
-  auto *obj = new ObjString(std::move(s));
+  auto [it, inserted] = interned_strings.try_emplace(std::move(s), nullptr);
+  if (!inserted) {
+    return it->second;
+  }
+  auto *obj = new ObjString(it->first);
   obj->next = objects;
   objects = obj;
+  it->second = obj;
   return obj;
 }
 
@@ -169,6 +174,27 @@ InterpretResult VM::binary_op(ValueBuilder builder, Op op) {
   return InterpretResult::Ok;
 }
 
+TEST_CASE("VM::alloc_string") {
+  VM vm{};
+
+  SUBCASE("returns same pointer for equal strings") {
+    ObjString *a = vm.alloc_string("hello");
+    ObjString *b = vm.alloc_string("hello");
+    CHECK(a == b);
+  }
+
+  SUBCASE("returns different pointers for different strings") {
+    ObjString *a = vm.alloc_string("hello");
+    ObjString *b = vm.alloc_string("world");
+    CHECK(a != b);
+  }
+
+  SUBCASE("interned string has correct content") {
+    ObjString *a = vm.alloc_string("hello");
+    CHECK(a->chars == "hello");
+  }
+}
+
 TEST_CASE("VM::interpret") {
   VM vm{};
 
@@ -182,6 +208,20 @@ TEST_CASE("VM::interpret") {
       CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok);
     });
     CHECK(output == "true\n");
+  }
+
+  SUBCASE("equal strings are equal") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("\"hello\" == \"hello\"") == InterpretResult::Ok);
+    });
+    CHECK(output == "true\n");
+  }
+
+  SUBCASE("different strings are not equal") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("\"hello\" == \"world\"") == InterpretResult::Ok);
+    });
+    CHECK(output == "false\n");
   }
 
   SUBCASE("string concatenation") {

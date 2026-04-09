@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include <unordered_map>
 
 #include "chunk.h"
 
@@ -16,6 +17,7 @@ class VM {
   Value stack[STACK_MAX]{};
   Value *stack_top{};
   Object *objects{};
+  std::unordered_map<std::string, ObjString *> interned_strings{};
 
   InterpretResult run();
   void push(Value value);
