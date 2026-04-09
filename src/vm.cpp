@@ -212,6 +212,17 @@ TEST_CASE("VM::interpret") {
     CHECK(output == "true\n");
   }
 
+  SUBCASE("new chunk is used on each invocation") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok);
+    });
+    CHECK(output == "true\n");
+
+    output = capture_stdout(
+        [&] { CHECK(vm.interpret("4 + 5") == InterpretResult::Ok); });
+    CHECK(output == "9\n");
+  }
+
   SUBCASE("equal strings are equal") {
     std::string output = capture_stdout([&] {
       CHECK(vm.interpret("\"hello\" == \"hello\"") == InterpretResult::Ok);
