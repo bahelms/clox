@@ -28,6 +28,8 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
 
   uint8_t instruction = chunk[offset];
   switch (instruction) {
+  case OP_PRINT:
+    return simple_instruction("OP_PRINT", offset);
   case OP_RETURN:
     return simple_instruction("OP_RETURN", offset);
   case OP_CONSTANT:
@@ -38,6 +40,12 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
     return simple_instruction("OP_TRUE", offset);
   case OP_FALSE:
     return simple_instruction("OP_FALSE", offset);
+  case OP_POP:
+    return simple_instruction("OP_POP", offset);
+  case OP_GET_GLOBAL:
+    return constant_instruction("OP_GET_GLOBAL", chunk, offset);
+  case OP_DEFINE_GLOBAL:
+    return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
   case OP_EQUAL:
     return simple_instruction("OP_EQUAL", offset);
   case OP_NOT_EQUAL:

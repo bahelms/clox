@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <iostream>
 #include <unordered_map>
 
@@ -18,12 +19,15 @@ class VM {
   Value *stack_top{};
   Object *objects{};
   std::unordered_map<std::string, ObjString *> interned_strings{};
+  std::unordered_map<std::string, Value> globals{};
 
   InterpretResult run();
   void push(Value value);
   Value pop();
   Value peek(int distance);
   void reset_stack();
+  uint8_t read_byte();
+  ObjString *read_string();
 
   template <typename ValueBuilder, typename Op>
   InterpretResult binary_op(ValueBuilder builder, Op op);

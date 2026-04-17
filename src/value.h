@@ -27,8 +27,6 @@ struct Value {
   double as_number() const { return as.number; }
   bool is_number() { return type == ValueType::Number; }
 
-  // static Value object(Object *v) { return {ValueType::Object, {.object = v}};
-  // }
   static Value object(ObjString *obj_str) {
     return {ValueType::Object, {.object = obj_str}};
   }
@@ -39,7 +37,6 @@ struct Value {
     return is_object() && as_object()->type == ObjectType::String;
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
-  // #define AS_CSTRING(value)      (((ObjString*)AS_OBJ(value))->chars)
 };
 
 void print_value(Value value);

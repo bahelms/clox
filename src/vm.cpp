@@ -1,10 +1,12 @@
 #include <cstdarg>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 
 #include "chunk.h"
 #include "compiler.h"
 #include "doctest.h"
+#include "object.h"
 #include "test_utils.h"
 #include "value.h"
 #include "vm.h"
@@ -42,10 +44,10 @@ InterpretResult VM::run() {
     disassemble_instruction(chunk, static_cast<int>(ip - chunk.data()));
 #endif
 
-    uint8_t instr = *ip++;
+    uint8_t instr = read_byte();
     switch (instr) {
     case OP_CONSTANT: {
-      push(chunk.get_constant(*ip++));
+      push(chunk.get_constant(read_byte()));
       break;
     }
     case OP_NIL:
@@ -56,6 +58,23 @@ InterpretResult VM::run() {
       break;
     case OP_FALSE:
       push(Value::boolean(false));
+      break;
+    case OP_POP:
+      pop();
+      break;
+    case OP_GET_GLOBAL: {
+      ObjString *name = read_string();
+      auto it = globals.find(name->chars);
+      if (it == globals.end()) {
+        runtime_error("Undefined variable '%s'", name->chars);
+        return InterpretResult::RuntimeError;
+      }
+      push(it->second);
+      break;
+    }
+    case OP_DEFINE_GLOBAL:
+      globals.insert({read_string()->chars, peek(0)});
+      pop();
       break;
     case OP_EQUAL: {
       Value b = pop();
@@ -115,9 +134,12 @@ InterpretResult VM::run() {
 
       push(Value::number(-pop().as_number()));
       break;
-    case OP_RETURN: {
+    case OP_PRINT: {
       print_value(pop());
       std::cout << '\n';
+      break;
+    }
+    case OP_RETURN: {
       return InterpretResult::Ok;
     }
     default:
@@ -125,6 +147,12 @@ InterpretResult VM::run() {
       return InterpretResult::RuntimeError;
     }
   }
+}
+
+uint8_t VM::read_byte() { return *ip++; }
+
+ObjString *VM::read_string() {
+  return chunk.get_constant(read_byte()).as_string();
 }
 
 void VM::push(Value value) {
@@ -195,6 +223,13 @@ TEST_CASE("VM::alloc_string") {
     ObjString *a = vm.alloc_string("hello");
     CHECK(a->chars == "hello");
   }
+
+  SUBCASE("empty string is interned") {
+    ObjString *a = vm.alloc_string("");
+    ObjString *b = vm.alloc_string("");
+    CHECK(a == b);
+    CHECK(a->chars == "");
+  }
 }
 
 TEST_CASE("VM::interpret") {
@@ -202,46 +237,71 @@ TEST_CASE("VM::interpret") {
 
   SUBCASE("returns Ok") {
     std::string output = capture_stdout(
-        [&] { CHECK(vm.interpret("1 + 2") == InterpretResult::Ok); });
+        [&] { CHECK(vm.interpret("1 + 2;") == InterpretResult::Ok); });
   }
 
   SUBCASE("equality with mixed types") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok);
+      CHECK(vm.interpret("print !(5 - 4 > 3 * 2 == !nil);") ==
+            InterpretResult::Ok);
     });
     CHECK(output == "true\n");
   }
 
   SUBCASE("new chunk is used on each invocation") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("!(5 - 4 > 3 * 2 == !nil)") == InterpretResult::Ok);
+      CHECK(vm.interpret("print !(5 - 4 > 3 * 2 == !nil);") ==
+            InterpretResult::Ok);
     });
     CHECK(output == "true\n");
 
     output = capture_stdout(
-        [&] { CHECK(vm.interpret("4 + 5") == InterpretResult::Ok); });
+        [&] { CHECK(vm.interpret("print 4 + 5;") == InterpretResult::Ok); });
     CHECK(output == "9\n");
   }
 
   SUBCASE("equal strings are equal") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("\"hello\" == \"hello\"") == InterpretResult::Ok);
+      CHECK(vm.interpret("print \"hello\" == \"hello\";") ==
+            InterpretResult::Ok);
     });
     CHECK(output == "true\n");
   }
 
   SUBCASE("different strings are not equal") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("\"hello\" == \"world\"") == InterpretResult::Ok);
+      CHECK(vm.interpret("print \"hello\" == \"world\";") ==
+            InterpretResult::Ok);
     });
     CHECK(output == "false\n");
   }
 
   SUBCASE("string concatenation") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("\"hello\" + \" \" + \"world\"") ==
+      CHECK(vm.interpret("print \"hello\" + \" \" + \"world\";") ==
             InterpretResult::Ok);
     });
     CHECK(output == "hello world\n");
+  }
+
+  SUBCASE("concatenated string is interned") {
+    ObjString *a = vm.alloc_string("hello world");
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("print \"hello\" + \" world\" == \"hello world\";") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "true\n");
+  }
+
+  SUBCASE("returns CompileError on invalid syntax") {
+    CHECK(vm.interpret("@") == InterpretResult::CompileError);
+  }
+
+  SUBCASE("returns RuntimeError when negating a non-number") {
+    CHECK(vm.interpret("-\"hello\";") == InterpretResult::RuntimeError);
+  }
+
+  SUBCASE("returns RuntimeError for mixed types in addition") {
+    CHECK(vm.interpret("\"hello\" + 1;") == InterpretResult::RuntimeError);
   }
 }

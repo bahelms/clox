@@ -1,7 +1,9 @@
 #include <cstdint>
+#include <sys/types.h>
 
 #include "chunk.h"
 #include "compiler.h"
+#include "object.h"
 #include "scanner.h"
 #include "vm.h"
 
@@ -29,7 +31,7 @@ ParseRule rules[] = {
     {NULL, &Compiler::binary, Precedence::Comparison},       // GreaterEqual
     {NULL, &Compiler::binary, Precedence::Comparison},       // Less
     {NULL, &Compiler::binary, Precedence::Comparison},       // LessEqual
-    {NULL, NULL, Precedence::None},                          // Identifier
+    {&Compiler::variable, NULL, Precedence::None},           // Identifier
     {&Compiler::string, NULL, Precedence::None},             // String
     {&Compiler::number, NULL, Precedence::None},             // Number
     {NULL, NULL, Precedence::None},                          // And
@@ -59,10 +61,107 @@ static ParseRule &get_rule(TokenType operator_type) {
 bool Compiler::compile(Chunk &chunk) {
   current_chunk = &chunk;
   parser.advance();
-  expression();
-  parser.consume(TokenType::Eof, "Expect end of expression");
+  while (!match(TokenType::Eof)) {
+    declaration();
+  }
   end();
   return !parser.had_error;
+}
+
+bool Compiler::match(TokenType type) {
+  if (!check(type)) {
+    return false;
+  }
+  parser.advance();
+  return true;
+}
+
+bool Compiler::check(TokenType type) { return parser.current_type() == type; }
+
+void Compiler::declaration() {
+  if (match(TokenType::Var)) {
+    var_declaration();
+  } else {
+    statement();
+  }
+
+  if (parser.has_panicked()) {
+    synchronize();
+  }
+}
+
+void Compiler::synchronize() {
+  parser.panic(false);
+
+  while (parser.current_type() != TokenType::Eof) {
+    if (parser.previous_type() == TokenType::Semicolon) {
+      return;
+    }
+
+    switch (parser.current_type()) {
+    case TokenType::Class:
+    case TokenType::Fun:
+    case TokenType::Var:
+    case TokenType::For:
+    case TokenType::If:
+    case TokenType::While:
+    case TokenType::Print:
+    case TokenType::Return:
+      return;
+
+    default:; // do nothing
+    }
+
+    parser.advance();
+  }
+}
+
+void Compiler::var_declaration() {
+  uint8_t global_var_idx = parse_variable("Expect variable name.");
+  if (match(TokenType::Equal)) {
+    expression();
+
+  } else {
+    emit_byte(OP_NIL);
+  }
+
+  parser.consume(TokenType::Semicolon, "Expect ';' after variable declaration");
+  define_variable(global_var_idx);
+}
+
+uint8_t Compiler::parse_variable(const char *error_msg) {
+  parser.consume(TokenType::Identifier, error_msg);
+  return identifier_constant(&parser.previous);
+}
+
+uint8_t Compiler::identifier_constant(Token *name) {
+  ObjString *identifier =
+      vm.alloc_string(std::string(name->start, name->length));
+  return make_constant(Value::object(identifier));
+}
+
+void Compiler::define_variable(uint8_t global_var_idx) {
+  emit_bytes(OP_DEFINE_GLOBAL, global_var_idx);
+}
+
+void Compiler::statement() {
+  if (match(TokenType::Print)) {
+    print_statement();
+  } else {
+    expression_statement();
+  }
+}
+
+void Compiler::print_statement() {
+  expression();
+  parser.consume(TokenType::Semicolon, "Expect ';' after value");
+  emit_byte(OP_PRINT);
+}
+
+void Compiler::expression_statement() {
+  expression();
+  parser.consume(TokenType::Semicolon, "Expect ';' after expression");
+  emit_byte(OP_POP);
 }
 
 void Compiler::expression() { parse_precedence(Precedence::Assignment); }
@@ -171,6 +270,13 @@ void Compiler::string() {
   emit_constant(Value::object(str));
 }
 
+void Compiler::variable() { named_variable(parser.previous); }
+
+void Compiler::named_variable(Token name) {
+  uint8_t arg = identifier_constant(&name);
+  emit_bytes(OP_GET_GLOBAL, arg);
+}
+
 void Compiler::end() {
   emit_return();
 #ifdef DEBUG_PRINT_CODE
@@ -215,44 +321,47 @@ static Chunk compile_source(std::string_view src) {
 }
 
 TEST_CASE("Compiler: number literal") {
-  auto chunk = compile_source("1.5");
+  auto chunk = compile_source("1.5;");
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk.get_constant(chunk[1]).as_number() == 1.5);
-  CHECK(chunk[2] == OP_RETURN);
+  CHECK(chunk[2] == OP_POP);
+  CHECK(chunk[3] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: negation") {
-  auto chunk = compile_source("-2");
+  auto chunk = compile_source("-2;");
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk.get_constant(chunk[1]).as_number() == 2.0);
   CHECK(chunk[2] == OP_NEGATE);
-  CHECK(chunk[3] == OP_RETURN);
+  CHECK(chunk[3] == OP_POP);
+  CHECK(chunk[4] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: binary operations") {
   SUBCASE("addition") {
-    auto chunk = compile_source("1 + 2");
+    auto chunk = compile_source("1 + 2;");
     CHECK(chunk[0] == OP_CONSTANT);
     CHECK(chunk[2] == OP_CONSTANT);
     CHECK(chunk[4] == OP_ADD);
-    CHECK(chunk[5] == OP_RETURN);
+    CHECK(chunk[5] == OP_POP);
+    CHECK(chunk[6] == OP_RETURN);
   }
   SUBCASE("subtraction") {
-    auto chunk = compile_source("5 - 3");
+    auto chunk = compile_source("5 - 3;");
     CHECK(chunk[4] == OP_SUBTRACT);
   }
   SUBCASE("multiplication") {
-    auto chunk = compile_source("2 * 4");
+    auto chunk = compile_source("2 * 4;");
     CHECK(chunk[4] == OP_MULTIPLY);
   }
   SUBCASE("division") {
-    auto chunk = compile_source("8 / 2");
+    auto chunk = compile_source("8 / 2;");
     CHECK(chunk[4] == OP_DIVIDE);
   }
 }
 
 TEST_CASE("Compiler: grouping") {
-  auto chunk = compile_source("(3 * 4) + 2");
+  auto chunk = compile_source("(3 * 4) + 2;");
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk.get_constant(chunk[1]).as_number() == 3.0);
   CHECK(chunk[2] == OP_CONSTANT);
@@ -261,48 +370,55 @@ TEST_CASE("Compiler: grouping") {
   CHECK(chunk[5] == OP_CONSTANT);
   CHECK(chunk.get_constant(chunk[6]).as_number() == 2.0);
   CHECK(chunk[7] == OP_ADD);
-  CHECK(chunk[8] == OP_RETURN);
+  CHECK(chunk[8] == OP_POP);
+  CHECK(chunk[9] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: operator precedence") {
-  auto chunk = compile_source("1 + 2 * 3");
+  auto chunk = compile_source("1 + 2 * 3;");
   CHECK(chunk[6] == OP_MULTIPLY);
   CHECK(chunk[7] == OP_ADD);
 }
 
 TEST_CASE("Compiler: boolean and nil literals") {
   SUBCASE("false") {
-    auto chunk = compile_source("false");
+    auto chunk = compile_source("false;");
     CHECK(chunk[0] == OP_FALSE);
-    CHECK(chunk[1] == OP_RETURN);
+    CHECK(chunk[1] == OP_POP);
+    CHECK(chunk[2] == OP_RETURN);
   }
   SUBCASE("true") {
-    auto chunk = compile_source("true");
+    auto chunk = compile_source("true;");
     CHECK(chunk[0] == OP_TRUE);
-    CHECK(chunk[1] == OP_RETURN);
+    CHECK(chunk[1] == OP_POP);
+    CHECK(chunk[2] == OP_RETURN);
   }
   SUBCASE("nil") {
-    auto chunk = compile_source("nil");
+    auto chunk = compile_source("nil;");
     CHECK(chunk[0] == OP_NIL);
-    CHECK(chunk[1] == OP_RETURN);
+    CHECK(chunk[1] == OP_POP);
+    CHECK(chunk[2] == OP_RETURN);
   }
 }
 
 TEST_CASE("Compiler: comparison operators emit single opcodes") {
   SUBCASE("!=") {
-    auto chunk = compile_source("1 != 2");
+    auto chunk = compile_source("1 != 2;");
     CHECK(chunk[4] == OP_NOT_EQUAL);
-    CHECK(chunk[5] == OP_RETURN);
+    CHECK(chunk[5] == OP_POP);
+    CHECK(chunk[6] == OP_RETURN);
   }
   SUBCASE(">=") {
-    auto chunk = compile_source("1 >= 2");
+    auto chunk = compile_source("1 >= 2;");
     CHECK(chunk[4] == OP_GREATER_EQUAL);
-    CHECK(chunk[5] == OP_RETURN);
+    CHECK(chunk[5] == OP_POP);
+    CHECK(chunk[6] == OP_RETURN);
   }
   SUBCASE("<=") {
-    auto chunk = compile_source("1 <= 2");
+    auto chunk = compile_source("1 <= 2;");
     CHECK(chunk[4] == OP_LESS_EQUAL);
-    CHECK(chunk[5] == OP_RETURN);
+    CHECK(chunk[5] == OP_POP);
+    CHECK(chunk[6] == OP_RETURN);
   }
 }
 

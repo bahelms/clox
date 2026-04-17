@@ -9,8 +9,10 @@ class Parser {
 public:
   Token previous{};
   bool had_error{};
-  TokenType current_type() { return current.type; };
-  TokenType previous_type() { return previous.type; };
+  TokenType current_type() { return current.type; }
+  TokenType previous_type() { return previous.type; }
+  bool has_panicked() { return panic_mode; }
+  void panic(bool value) { panic_mode = value; }
 
   Parser(std::string_view source) : scanner(source) {}
   void advance();
