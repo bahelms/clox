@@ -3,8 +3,10 @@
 
 #include "chunk.h"
 #include "compiler.h"
+#include "doctest.h"
 #include "object.h"
 #include "scanner.h"
+#include "test_utils.h"
 #include "vm.h"
 
 #ifdef DEBUG_PRINT_CODE
@@ -120,7 +122,6 @@ void Compiler::var_declaration() {
   uint8_t global_var_idx = parse_variable("Expect variable name.");
   if (match(TokenType::Equal)) {
     expression();
-
   } else {
     emit_byte(OP_NIL);
   }
@@ -173,16 +174,21 @@ void Compiler::parse_precedence(Precedence precedence) {
     parser.error("Expect expression.");
     return;
   }
-  (this->*prefix_rule)();
+  bool can_assign = precedence <= Precedence::Assignment;
+  (this->*prefix_rule)(can_assign);
 
   while (precedence <= get_rule(parser.current_type()).precedence) {
     parser.advance();
     auto &infix_rule = get_rule(parser.previous_type()).infix;
-    (this->*infix_rule)();
+    (this->*infix_rule)(false);
+  }
+
+  if (can_assign && match(TokenType::Equal)) {
+    parser.error("Invalid assignment target.");
   }
 }
 
-void Compiler::unary() {
+void Compiler::unary(bool can_assign) {
   TokenType operator_type = parser.previous_type();
   parse_precedence(Precedence::Unary);
   switch (operator_type) {
@@ -197,7 +203,7 @@ void Compiler::unary() {
   }
 }
 
-void Compiler::binary() {
+void Compiler::binary(bool can_assign) {
   TokenType operator_type = parser.previous_type();
   const ParseRule &rule = get_rule(operator_type);
   parse_precedence(rule.precedence + 1);
@@ -238,17 +244,17 @@ void Compiler::binary() {
   }
 }
 
-void Compiler::number() {
+void Compiler::number(bool can_assign) {
   double value = strtod(parser.previous.start, NULL);
   emit_constant(Value::number(value));
 }
 
-void Compiler::grouping() {
+void Compiler::grouping(bool can_assign) {
   expression();
   parser.consume(TokenType::RightParen, "Expect ')' after expression.");
 }
 
-void Compiler::literal() {
+void Compiler::literal(bool can_assign) {
   switch (parser.previous_type()) {
   case TokenType::False:
     emit_byte(OP_FALSE);
@@ -264,17 +270,24 @@ void Compiler::literal() {
   }
 }
 
-void Compiler::string() {
+void Compiler::string(bool can_assign) {
   ObjString *str = vm.alloc_string(
       std::string(parser.previous.start + 1, parser.previous.length - 2));
   emit_constant(Value::object(str));
 }
 
-void Compiler::variable() { named_variable(parser.previous); }
+void Compiler::variable(bool can_assign) {
+  named_variable(parser.previous, can_assign);
+}
 
-void Compiler::named_variable(Token name) {
+void Compiler::named_variable(Token name, bool can_assign) {
   uint8_t arg = identifier_constant(&name);
-  emit_bytes(OP_GET_GLOBAL, arg);
+  if (can_assign && match(TokenType::Equal)) {
+    expression();
+    emit_bytes(OP_SET_GLOBAL, arg);
+  } else {
+    emit_bytes(OP_GET_GLOBAL, arg);
+  }
 }
 
 void Compiler::end() {
@@ -309,8 +322,6 @@ uint8_t Compiler::make_constant(Value value) {
   }
   return index;
 }
-
-#include "doctest.h"
 
 static Chunk compile_source(std::string_view src) {
   Chunk chunk;
@@ -426,5 +437,5 @@ TEST_CASE("Compiler: compile returns false on error") {
   Chunk chunk;
   VM vm;
   Compiler compiler("@", vm);
-  CHECK(compiler.compile(chunk) == false);
+  suppress_stderr([&] { CHECK(compiler.compile(chunk) == false); });
 }

@@ -66,7 +66,7 @@ InterpretResult VM::run() {
       ObjString *name = read_string();
       auto it = globals.find(name->chars);
       if (it == globals.end()) {
-        runtime_error("Undefined variable '%s'", name->chars);
+        runtime_error("Undefined variable '{}'", name->chars);
         return InterpretResult::RuntimeError;
       }
       push(it->second);
@@ -76,6 +76,16 @@ InterpretResult VM::run() {
       globals.insert({read_string()->chars, peek(0)});
       pop();
       break;
+    case OP_SET_GLOBAL: {
+      ObjString *name = read_string();
+      auto it = globals.find(name->chars);
+      if (it == globals.end()) {
+        runtime_error("Undefined variable '{}'", name->chars);
+        return InterpretResult::RuntimeError;
+      }
+      it->second = peek(0);
+      break;
+    }
     case OP_EQUAL: {
       Value b = pop();
       Value a = pop();
@@ -294,14 +304,19 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("returns CompileError on invalid syntax") {
-    CHECK(vm.interpret("@") == InterpretResult::CompileError);
+    suppress_stderr(
+        [&] { CHECK(vm.interpret("@") == InterpretResult::CompileError); });
   }
 
   SUBCASE("returns RuntimeError when negating a non-number") {
-    CHECK(vm.interpret("-\"hello\";") == InterpretResult::RuntimeError);
+    suppress_stderr([&] {
+      CHECK(vm.interpret("-\"hello\";") == InterpretResult::RuntimeError);
+    });
   }
 
   SUBCASE("returns RuntimeError for mixed types in addition") {
-    CHECK(vm.interpret("\"hello\" + 1;") == InterpretResult::RuntimeError);
+    suppress_stderr([&] {
+      CHECK(vm.interpret("\"hello\" + 1;") == InterpretResult::RuntimeError);
+    });
   }
 }

@@ -52,22 +52,21 @@ class Compiler {
   bool check(TokenType type);
   void print_statement();
   void expression_statement();
-
-  void named_variable(Token name);
+  void named_variable(Token name, bool can_assign);
 
 public:
   Compiler(std::string_view src, VM &vm) : source(src), parser(src), vm(vm) {};
   bool compile(Chunk &chunk);
-  void grouping();
-  void unary();
-  void binary();
-  void number();
-  void literal();
-  void string();
-  void variable();
+  void grouping(bool can_assign = false);
+  void unary(bool can_assign = false);
+  void binary(bool can_assign = false);
+  void number(bool can_assign = false);
+  void literal(bool can_assign = false);
+  void string(bool can_assign = false);
+  void variable(bool can_assign);
 };
 
-using ParseFn = void (Compiler::*)();
+using ParseFn = void (Compiler::*)(bool can_assign);
 
 struct ParseRule {
   ParseFn prefix{};

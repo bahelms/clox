@@ -11,3 +11,10 @@ inline std::string capture_stdout(std::function<void()> fn) {
   std::cout.rdbuf(old);
   return captured.str();
 }
+
+inline void suppress_stderr(std::function<void()> fn) {
+  std::ostringstream sink;
+  std::streambuf *old = std::cerr.rdbuf(sink.rdbuf());
+  fn();
+  std::cerr.rdbuf(old);
+}
