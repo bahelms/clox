@@ -4,7 +4,7 @@
 
 enum class ValueType { Boolean, Nil, Number, Object };
 
-bool values_equal(Value a, Value b);
+bool values_equal(const Value a, const Value b);
 bool is_falsey(Value value);
 
 // using manual union instead of std::variant to NaN box later on
@@ -37,6 +37,10 @@ struct Value {
     return is_object() && as_object()->type == ObjectType::String;
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
+
+  const bool operator==(const Value &other_value) const {
+    return values_equal(*this, other_value);
+  }
 };
 
 void print_value(Value value);

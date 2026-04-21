@@ -8,7 +8,7 @@ bool is_falsey(Value value) {
   return value.is_nil() || (value.is_boolean() && !value.as_boolean());
 }
 
-bool values_equal(Value a, Value b) {
+bool values_equal(const Value a, const Value b) {
   if (a.type != b.type) {
     return false;
   }

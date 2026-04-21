@@ -1,6 +1,8 @@
 #include "chunk.h"
 #include "doctest.h"
 
+#include <algorithm>
+
 void Chunk::write(uint8_t byte, int line) {
   code.push_back(byte);
   int instruction_index = code.size() - 1;
@@ -8,6 +10,10 @@ void Chunk::write(uint8_t byte, int line) {
 }
 
 uint8_t Chunk::write_constant(Value value) {
+  auto it = std::ranges::find(constants, value);
+  if (it != constants.end()) {
+    return std::distance(constants.begin(), it);
+  }
   constants.push_back(value);
   return constants.size() - 1;
 }
@@ -84,6 +90,19 @@ TEST_CASE("Chunk::write_constant") {
 
   SUBCASE("successive constants return increasing indices") {
     CHECK(chunk.write_constant(Value::number(1.0)) == 0);
+    CHECK(chunk.write_constant(Value::number(2.0)) == 1);
+  }
+
+  SUBCASE("duplicate value returns the same index") {
+    uint8_t first = chunk.write_constant(Value::number(1.0));
+    uint8_t second = chunk.write_constant(Value::number(1.0));
+    CHECK(first == second);
+  }
+
+  SUBCASE(
+      "duplicate value does not shift index of subsequent unique constant") {
+    chunk.write_constant(Value::number(1.0));
+    chunk.write_constant(Value::number(1.0));
     CHECK(chunk.write_constant(Value::number(2.0)) == 1);
   }
 }
