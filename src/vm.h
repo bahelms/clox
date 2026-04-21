@@ -1,7 +1,10 @@
 #pragma once
 #include <cstdint>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "chunk.h"
 
@@ -19,7 +22,10 @@ class VM {
   Value *stack_top{};
   Object *objects{};
   std::unordered_map<std::string, ObjString *> interned_strings{};
-  std::unordered_map<std::string, Value> globals{};
+  std::unordered_map<std::string, uint8_t> global_slots{};
+  std::vector<Value> globals{};
+  std::vector<bool> globals_defined{};
+  std::vector<std::string> global_names{};
 
   InterpretResult run();
   void push(Value value);
@@ -27,7 +33,6 @@ class VM {
   Value peek(int distance);
   void reset_stack();
   uint8_t read_byte();
-  ObjString *read_string();
 
   template <typename ValueBuilder, typename Op>
   InterpretResult binary_op(ValueBuilder builder, Op op);
@@ -40,4 +45,5 @@ public:
   ~VM();
   InterpretResult interpret(std::string source);
   ObjString *alloc_string(std::string s);
+  std::optional<uint8_t> get_or_alloc_global_slot(const std::string &name);
 };

@@ -8,6 +8,7 @@
 
 int simple_instruction(std::string_view, int);
 int constant_instruction(std::string_view, const Chunk &, int);
+int slot_instruction(std::string_view, const Chunk &, int);
 
 void disassemble_chunk(const Chunk &chunk, std::string name) {
   std::cout << "== " << name << " ==\n";
@@ -43,11 +44,11 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
   case OP_POP:
     return simple_instruction("OP_POP", offset);
   case OP_GET_GLOBAL:
-    return constant_instruction("OP_GET_GLOBAL", chunk, offset);
+    return slot_instruction("OP_GET_GLOBAL", chunk, offset);
   case OP_DEFINE_GLOBAL:
-    return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
+    return slot_instruction("OP_DEFINE_GLOBAL", chunk, offset);
   case OP_SET_GLOBAL:
-    return constant_instruction("OP_SET_GLOBAL", chunk, offset);
+    return slot_instruction("OP_SET_GLOBAL", chunk, offset);
   case OP_EQUAL:
     return simple_instruction("OP_EQUAL", offset);
   case OP_NOT_EQUAL:
@@ -91,6 +92,12 @@ int constant_instruction(std::string_view name, const Chunk &chunk,
   std::cout << std::format("{:<16s} {:4d} '", name, constant_idx);
   print_value(chunk.get_constant(constant_idx));
   std::cout << "'" << std::endl;
+  return offset + 2;
+}
+
+int slot_instruction(std::string_view name, const Chunk &chunk, int offset) {
+  uint8_t slot = chunk[offset + 1];
+  std::cout << std::format("{:<16s} {:4d}\n", name, slot);
   return offset + 2;
 }
 
