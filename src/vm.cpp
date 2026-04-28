@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <functional>
 #include <iostream>
+#include <sys/types.h>
 
 #include "chunk.h"
 #include "compiler.h"
@@ -62,6 +63,21 @@ InterpretResult VM::run() {
     case OP_POP:
       pop();
       break;
+    case OP_POPN:
+      for (int i = read_byte(); i > 0; i--) {
+        pop();
+      }
+      break;
+    case OP_GET_LOCAL: {
+      uint8_t slot = read_byte();
+      push(stack[slot]);
+      break;
+    }
+    case OP_SET_LOCAL: {
+      uint8_t slot = read_byte();
+      stack[slot] = peek(0);
+      break;
+    }
     case OP_GET_GLOBAL: {
       ObjString *name = read_string();
       auto it = globals.find(name->chars);

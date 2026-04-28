@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <ranges>
 #include <sys/types.h>
 
 #include "chunk.h"
@@ -132,7 +133,45 @@ void Compiler::var_declaration() {
 
 uint8_t Compiler::parse_variable(const char *error_msg) {
   parser.consume(TokenType::Identifier, error_msg);
+  declare_variable();
+  if (scope_depth > 0) {
+    return 0;
+  }
   return identifier_constant(&parser.previous);
+}
+
+void Compiler::declare_variable() {
+  if (scope_depth == 0) {
+    return;
+  }
+  Token name = parser.previous;
+  for (Local &local :
+       std::span(locals).first(local_count) | std::views::reverse) {
+    if (local.depth != -1 && local.depth < scope_depth) {
+      break;
+    }
+
+    if (identifiers_equal(name, local.name)) {
+      parser.error("Already a variable with this name in this scope");
+    }
+  }
+  add_local(name);
+}
+
+bool Compiler::identifiers_equal(const Token a, const Token b) {
+  return std::string_view(a.start, a.length) ==
+         std::string_view(b.start, b.length);
+}
+
+void Compiler::add_local(const Token name) {
+  if (local_count == UINT8_MAX + 1) {
+    parser.error("Too many local variables in function.");
+    return;
+  }
+
+  Local *local = &locals[local_count++];
+  local->name = name;
+  local->depth = -1;
 }
 
 uint8_t Compiler::identifier_constant(Token *name) {
@@ -142,12 +181,24 @@ uint8_t Compiler::identifier_constant(Token *name) {
 }
 
 void Compiler::define_variable(uint8_t global_var_idx) {
+  if (scope_depth > 0) {
+    mark_initialized();
+    return;
+  }
   emit_bytes(OP_DEFINE_GLOBAL, global_var_idx);
+}
+
+void Compiler::mark_initialized() {
+  locals[local_count - 1].depth = scope_depth;
 }
 
 void Compiler::statement() {
   if (match(TokenType::Print)) {
     print_statement();
+  } else if (match(TokenType::LeftBrace)) {
+    begin_scope();
+    block();
+    end_scope();
   } else {
     expression_statement();
   }
@@ -157,6 +208,25 @@ void Compiler::print_statement() {
   expression();
   parser.consume(TokenType::Semicolon, "Expect ';' after value");
   emit_byte(OP_PRINT);
+}
+
+void Compiler::block() {
+  while (!check(TokenType::RightBrace) && !check(TokenType::Eof)) {
+    declaration();
+  }
+  parser.consume(TokenType::RightBrace, "Expect '}' after block.");
+}
+
+void Compiler::begin_scope() { scope_depth++; }
+
+void Compiler::end_scope() {
+  scope_depth--;
+  int locals_to_pop{};
+  while (local_count > 0 && locals[local_count - 1].depth > scope_depth) {
+    local_count--;
+    locals_to_pop++;
+  }
+  emit_bytes(OP_POPN, locals_to_pop);
 }
 
 void Compiler::expression_statement() {
@@ -281,13 +351,35 @@ void Compiler::variable(bool can_assign) {
 }
 
 void Compiler::named_variable(Token name, bool can_assign) {
-  uint8_t arg = identifier_constant(&name);
+  uint8_t get_op{}, set_op{};
+  int arg = resolve_local(name);
+  if (arg != -1) {
+    get_op = OP_GET_LOCAL;
+    set_op = OP_SET_LOCAL;
+  } else {
+    arg = identifier_constant(&name);
+    get_op = OP_GET_GLOBAL;
+    set_op = OP_GET_GLOBAL;
+  }
+
   if (can_assign && match(TokenType::Equal)) {
     expression();
-    emit_bytes(OP_SET_GLOBAL, arg);
+    emit_bytes(set_op, arg);
   } else {
-    emit_bytes(OP_GET_GLOBAL, arg);
+    emit_bytes(get_op, arg);
   }
+}
+
+int Compiler::resolve_local(const Token &name) {
+  for (int i = local_count - 1; i >= 0; i--) {
+    if (identifiers_equal(name, locals[i].name)) {
+      if (locals[i].depth == -1) {
+        parser.error("Can't read local variable in its own initializer.");
+      }
+      return i;
+    }
+  }
+  return -1;
 }
 
 void Compiler::end() {
