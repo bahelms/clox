@@ -335,4 +335,56 @@ TEST_CASE("VM::interpret") {
       CHECK(vm.interpret("\"hello\" + 1;") == InterpretResult::RuntimeError);
     });
   }
+
+  SUBCASE("local variable is readable within its scope") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("{ var x = 42; print x; }") == InterpretResult::Ok);
+    });
+    CHECK(output == "42\n");
+  }
+
+  SUBCASE("local variable assignment") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("{ var x = 1; x = 2; print x; }") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "2\n");
+  }
+
+  SUBCASE("local variable is not accessible outside its scope") {
+    suppress_stderr([&] {
+      CHECK(vm.interpret("{ var x = 1; } print x;") ==
+            InterpretResult::RuntimeError);
+    });
+  }
+
+  SUBCASE("nested scopes can access outer locals") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("{ var x = 10; { var y = 20; print x + y; } }") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "30\n");
+  }
+
+  SUBCASE("inner scope shadows outer local") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret(
+                "{ var x = 1; { var x = 2; print x; } print x; }") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "2\n1\n");
+  }
+
+  SUBCASE("duplicate local variable in same scope is a compile error") {
+    suppress_stderr([&] {
+      CHECK(vm.interpret("{ var x = 1; var x = 2; }") ==
+            InterpretResult::CompileError);
+    });
+  }
+
+  SUBCASE("reading local variable in its own initializer is a compile error") {
+    suppress_stderr([&] {
+      CHECK(vm.interpret("{ var x = x; }") == InterpretResult::CompileError);
+    });
+  }
 }

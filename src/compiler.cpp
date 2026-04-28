@@ -359,7 +359,7 @@ void Compiler::named_variable(Token name, bool can_assign) {
   } else {
     arg = identifier_constant(&name);
     get_op = OP_GET_GLOBAL;
-    set_op = OP_GET_GLOBAL;
+    set_op = OP_SET_GLOBAL;
   }
 
   if (can_assign && match(TokenType::Equal)) {
@@ -530,4 +530,82 @@ TEST_CASE("Compiler: compile returns false on error") {
   VM vm;
   Compiler compiler("@", vm);
   suppress_stderr([&] { CHECK(compiler.compile(chunk) == false); });
+}
+
+TEST_CASE("Compiler: local variable declaration leaves value on stack") {
+  // No OP_DEFINE_GLOBAL; initializer value sits as the local's slot
+  auto chunk = compile_source("{ var x = 1; }");
+  CHECK(chunk[0] == OP_CONSTANT);
+  CHECK(chunk.get_constant(chunk[1]).as_number() == 1.0);
+  CHECK(chunk[2] == OP_POPN);
+  CHECK(chunk[3] == 1);
+  CHECK(chunk[4] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
+  auto chunk = compile_source("{ var x = 1; print x; }");
+  // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 0)
+  // [2] OP_GET_LOCAL [3] 0         <- read x
+  // [4] OP_PRINT
+  // [5] OP_POPN [6] 1
+  // [7] OP_RETURN
+  CHECK(chunk[0] == OP_CONSTANT);
+  CHECK(chunk[2] == OP_GET_LOCAL);
+  CHECK(chunk[3] == 0);
+  CHECK(chunk[4] == OP_PRINT);
+  CHECK(chunk[5] == OP_POPN);
+  CHECK(chunk[6] == 1);
+  CHECK(chunk[7] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: local variable set emits OP_SET_LOCAL") {
+  auto chunk = compile_source("{ var x = 1; x = 2; }");
+  // [0] OP_CONSTANT [1] idx(1.0)   <- initializer (slot 0)
+  // [2] OP_CONSTANT [3] idx(2.0)   <- rhs of assignment
+  // [4] OP_SET_LOCAL [5] 0         <- assign x
+  // [6] OP_POP                     <- expression_statement discards result
+  // [7] OP_POPN [8] 1
+  // [9] OP_RETURN
+  CHECK(chunk[4] == OP_SET_LOCAL);
+  CHECK(chunk[5] == 0);
+  CHECK(chunk[6] == OP_POP);
+  CHECK(chunk[7] == OP_POPN);
+}
+
+TEST_CASE("Compiler: multiple locals get correct slot indices") {
+  auto chunk = compile_source("{ var x = 1; var y = 2; print y; print x; }");
+  // slot 0 = x, slot 1 = y
+  // [0] OP_CONSTANT [1] idx(1.0)
+  // [2] OP_CONSTANT [3] idx(2.0)
+  // [4] OP_GET_LOCAL [5] 1   <- y
+  // [6] OP_PRINT
+  // [7] OP_GET_LOCAL [8] 0   <- x
+  // [9] OP_PRINT
+  // [10] OP_POPN [11] 2
+  CHECK(chunk[4] == OP_GET_LOCAL);
+  CHECK(chunk[5] == 1);
+  CHECK(chunk[7] == OP_GET_LOCAL);
+  CHECK(chunk[8] == 0);
+  CHECK(chunk[10] == OP_POPN);
+  CHECK(chunk[11] == 2);
+}
+
+TEST_CASE("Compiler: end_scope pops all locals with OP_POPN") {
+  auto chunk = compile_source("{ var a = 1; var b = 2; var c = 3; }");
+  // Three locals are popped when the block ends
+  int popn_offset = 6; // after three OP_CONSTANT pairs
+  CHECK(chunk[popn_offset] == OP_POPN);
+  CHECK(chunk[popn_offset + 1] == 3);
+}
+
+TEST_CASE("Compiler: global variable assignment emits OP_SET_GLOBAL") {
+  // Regression: named_variable set_op was accidentally left as OP_GET_GLOBAL
+  auto chunk = compile_source("var x = 1; x = 2;");
+  // [0] OP_CONSTANT [1] idx(1.0)
+  // [2] OP_DEFINE_GLOBAL [3] name_idx
+  // [4] OP_CONSTANT [5] idx(2.0)
+  // [6] OP_SET_GLOBAL [7] name_idx
+  // [8] OP_POP
+  // [9] OP_RETURN
+  CHECK(chunk[6] == OP_SET_GLOBAL);
 }
