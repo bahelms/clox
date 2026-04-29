@@ -79,27 +79,28 @@ InterpretResult VM::run() {
       break;
     }
     case OP_GET_GLOBAL: {
-      ObjString *name = read_string();
-      auto it = globals.find(name->chars);
-      if (it == globals.end()) {
-        runtime_error("Undefined variable '{}'", name->chars);
+      uint8_t slot = read_byte();
+      if (!globals_defined[slot]) {
+        runtime_error("Undefined variable '{}'", global_names[slot]);
         return InterpretResult::RuntimeError;
       }
-      push(it->second);
+      push(globals[slot]);
       break;
     }
-    case OP_DEFINE_GLOBAL:
-      globals.insert({read_string()->chars, peek(0)});
+    case OP_DEFINE_GLOBAL: {
+      uint8_t slot = read_byte();
+      globals[slot] = peek(0);
+      globals_defined[slot] = true;
       pop();
       break;
+    }
     case OP_SET_GLOBAL: {
-      ObjString *name = read_string();
-      auto it = globals.find(name->chars);
-      if (it == globals.end()) {
-        runtime_error("Undefined variable '{}'", name->chars);
+      uint8_t slot = read_byte();
+      if (!globals_defined[slot]) {
+        runtime_error("Undefined variable '{}'", global_names[slot]);
         return InterpretResult::RuntimeError;
       }
-      it->second = peek(0);
+      globals[slot] = peek(0);
       break;
     }
     case OP_EQUAL: {
@@ -177,10 +178,6 @@ InterpretResult VM::run() {
 
 uint8_t VM::read_byte() { return *ip++; }
 
-ObjString *VM::read_string() {
-  return chunk.get_constant(read_byte()).as_string();
-}
-
 void VM::push(Value value) {
   *stack_top = value;
   stack_top++;
@@ -194,6 +191,22 @@ Value VM::pop() {
 Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 
 void VM::reset_stack() { stack_top = stack; }
+
+std::optional<uint8_t> VM::get_or_alloc_global_slot(const std::string &name) {
+  auto it = global_slots.find(name);
+  if (it != global_slots.end()) {
+    return it->second;
+  }
+  if (global_slots.size() == 256) {
+    return std::nullopt;
+  }
+  uint8_t slot = static_cast<uint8_t>(global_slots.size());
+  global_slots.emplace(name, slot);
+  globals.push_back(Value::nil());
+  globals_defined.push_back(false);
+  global_names.push_back(name);
+  return slot;
+}
 
 ObjString *VM::alloc_string(std::string s) {
   auto [it, inserted] = interned_strings.try_emplace(std::move(s), nullptr);
@@ -386,5 +399,41 @@ TEST_CASE("VM::interpret") {
     suppress_stderr([&] {
       CHECK(vm.interpret("{ var x = x; }") == InterpretResult::CompileError);
     });
+  }
+
+  SUBCASE("define and get global variable") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("var x = 42; print x;") == InterpretResult::Ok);
+    });
+    CHECK(output == "42\n");
+  }
+
+  SUBCASE("set global variable") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("var x = 1; x = 2; print x;") == InterpretResult::Ok);
+    });
+    CHECK(output == "2\n");
+  }
+
+  SUBCASE("get undefined variable returns RuntimeError") {
+    suppress_stderr([&] {
+      CHECK(vm.interpret("print y;") == InterpretResult::RuntimeError);
+    });
+  }
+
+  SUBCASE("set undefined variable returns RuntimeError") {
+    suppress_stderr([&] {
+      CHECK(vm.interpret("y = 1;") == InterpretResult::RuntimeError);
+    });
+  }
+
+  SUBCASE("globals persist across interpret calls") {
+    capture_stdout([&] {
+      CHECK(vm.interpret("var z = 99;") == InterpretResult::Ok);
+    });
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("print z;") == InterpretResult::Ok);
+    });
+    CHECK(output == "99\n");
   }
 }

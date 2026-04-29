@@ -175,9 +175,12 @@ void Compiler::add_local(const Token name) {
 }
 
 uint8_t Compiler::identifier_constant(Token *name) {
-  ObjString *identifier =
-      vm.alloc_string(std::string(name->start, name->length));
-  return make_constant(Value::object(identifier));
+  auto slot = vm.get_or_alloc_global_slot(std::string(name->start, name->length));
+  if (!slot.has_value()) {
+    parser.error("Too many global variables in one program.");
+    return 0;
+  }
+  return slot.value();
 }
 
 void Compiler::define_variable(uint8_t global_var_idx) {
@@ -608,4 +611,38 @@ TEST_CASE("Compiler: global variable assignment emits OP_SET_GLOBAL") {
   // [8] OP_POP
   // [9] OP_RETURN
   CHECK(chunk[6] == OP_SET_GLOBAL);
+}
+
+TEST_CASE("Compiler: global variable slot assignment") {
+  SUBCASE("first global gets slot 0") {
+    Chunk chunk;
+    VM vm;
+    Compiler compiler("var x = 1;", vm);
+    compiler.compile(chunk);
+    CHECK(chunk[2] == OP_DEFINE_GLOBAL);
+    CHECK(chunk[3] == 0);
+  }
+
+  SUBCASE("second distinct global gets slot 1") {
+    Chunk chunk;
+    VM vm;
+    Compiler compiler("var x = 1; var y = 2;", vm);
+    compiler.compile(chunk);
+    CHECK(chunk[2] == OP_DEFINE_GLOBAL);
+    CHECK(chunk[3] == 0);
+    CHECK(chunk[6] == OP_DEFINE_GLOBAL);
+    CHECK(chunk[7] == 1);
+  }
+
+  SUBCASE("same variable name reuses the same slot across interpret calls") {
+    VM vm;
+    Chunk chunk1;
+    Compiler c1("var a = 1;", vm);
+    c1.compile(chunk1);
+    Chunk chunk2;
+    Compiler c2("var a = 2;", vm);
+    c2.compile(chunk2);
+    CHECK(chunk1[3] == 0);
+    CHECK(chunk2[3] == 0);
+  }
 }
