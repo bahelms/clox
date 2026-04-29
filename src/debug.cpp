@@ -45,7 +45,7 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
   case OP_POP:
     return simple_instruction("OP_POP", offset);
   case OP_POPN:
-    return simple_instruction("OP_POPN", offset);
+    return byte_instruction("OP_POPN", chunk, offset);
   case OP_GET_LOCAL:
     return byte_instruction("OP_GET_LOCAL", chunk, offset);
   case OP_SET_LOCAL:
@@ -158,6 +158,19 @@ TEST_CASE("disassemble_instruction") {
 
     CHECK(output.find("OP_CONSTANT") != std::string::npos);
     CHECK(output.find("3.14") != std::string::npos);
+  }
+
+  SUBCASE("OP_POPN advances offset by 2") {
+    Chunk chunk;
+    chunk.write(OP_POPN, 1);
+    chunk.write(3, 1);
+
+    std::string output = capture_stdout([&] {
+      int next_offset = disassemble_instruction(chunk, 0);
+      CHECK(next_offset == 2);
+    });
+
+    CHECK(output.find("OP_POPN") != std::string::npos);
   }
 
   SUBCASE("same-line instructions print pipe instead of line number") {
