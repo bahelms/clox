@@ -47,6 +47,8 @@ class Compiler {
   void emit_bytes(uint8_t byte1, uint8_t byte2);
   void emit_constant(Value value);
   uint8_t make_constant(Value value);
+  int emit_jump(OpCode op);
+  void patch_jump(int instr_offset);
 
   void declaration();
   void synchronize();
@@ -64,6 +66,7 @@ class Compiler {
   bool match(TokenType type);
   bool check(TokenType type);
   void print_statement();
+  void if_statement();
   void expression_statement();
   void named_variable(Token name, bool can_assign);
   int resolve_local(const Token &name);

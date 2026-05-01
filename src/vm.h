@@ -33,6 +33,7 @@ class VM {
   Value peek(int distance);
   void reset_stack();
   uint8_t read_byte();
+  uint16_t read_short();
 
   template <typename ValueBuilder, typename Op>
   InterpretResult binary_op(ValueBuilder builder, Op op);

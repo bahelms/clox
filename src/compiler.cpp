@@ -175,7 +175,8 @@ void Compiler::add_local(const Token name) {
 }
 
 uint8_t Compiler::identifier_constant(Token *name) {
-  auto slot = vm.get_or_alloc_global_slot(std::string(name->start, name->length));
+  auto slot =
+      vm.get_or_alloc_global_slot(std::string(name->start, name->length));
   if (!slot.has_value()) {
     parser.error("Too many global variables in one program.");
     return 0;
@@ -195,9 +196,13 @@ void Compiler::mark_initialized() {
   locals[local_count - 1].depth = scope_depth;
 }
 
+// Statements have zero stack effect. After execution of these instructions,
+// the stack should be how it was before execution.
 void Compiler::statement() {
   if (match(TokenType::Print)) {
     print_statement();
+  } else if (match(TokenType::If)) {
+    if_statement();
   } else if (match(TokenType::LeftBrace)) {
     begin_scope();
     block();
@@ -211,6 +216,41 @@ void Compiler::print_statement() {
   expression();
   parser.consume(TokenType::Semicolon, "Expect ';' after value");
   emit_byte(OP_PRINT);
+}
+
+void Compiler::if_statement() {
+  parser.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+  expression();
+  parser.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+  int then_jump = emit_jump(OP_JUMP_IF_FALSE);
+  emit_byte(OP_POP);
+  statement();
+  int else_jump = emit_jump(OP_JUMP);
+  patch_jump(then_jump);
+  emit_byte(OP_POP);
+
+  if (match(TokenType::Else)) {
+    statement();
+  }
+  patch_jump(else_jump);
+}
+
+int Compiler::emit_jump(OpCode op) {
+  emit_byte(op);
+  emit_byte(0xff);
+  emit_byte(0xff);
+  return current_chunk->size() - 2;
+}
+
+void Compiler::patch_jump(int instr_offset) {
+  int jump = current_chunk->size() - instr_offset - 2;
+  if (jump > UINT16_MAX) {
+    parser.error("Too much code to jump over.");
+  }
+
+  current_chunk->set_offset(instr_offset, (jump >> 8) & 0xff);
+  current_chunk->set_offset(instr_offset + 1, jump & 0xff);
 }
 
 void Compiler::block() {
@@ -644,5 +684,56 @@ TEST_CASE("Compiler: global variable slot assignment") {
     c2.compile(chunk2);
     CHECK(chunk1[3] == 0);
     CHECK(chunk2[3] == 0);
+  }
+}
+
+TEST_CASE("Compiler: if statement") {
+  SUBCASE("if without else emits JUMP_IF_FALSE, then-branch, JUMP, POP") {
+    auto chunk = compile_source("if (true) print \"yes\";");
+    // 0:  OP_TRUE
+    // 1:  OP_JUMP_IF_FALSE  2: 0  3: 7   (→ pos 11)
+    // 4:  OP_POP
+    // 5:  OP_CONSTANT  6: 0
+    // 7:  OP_PRINT
+    // 8:  OP_JUMP  9: 0  10: 1  (→ pos 12)
+    // 11: OP_POP
+    // 12: OP_RETURN
+    CHECK(chunk[0] == OP_TRUE);
+    CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+    CHECK(chunk[2] == 0);
+    CHECK(chunk[3] == 7);
+    CHECK(chunk[4] == OP_POP);
+    CHECK(chunk[5] == OP_CONSTANT);
+    CHECK(chunk[7] == OP_PRINT);
+    CHECK(chunk[8] == OP_JUMP);
+    CHECK(chunk[9] == 0);
+    CHECK(chunk[10] == 1);
+    CHECK(chunk[11] == OP_POP);
+    CHECK(chunk[12] == OP_RETURN);
+  }
+  SUBCASE("if-else emits correct jump offsets around both branches") {
+    auto chunk = compile_source("if (true) print \"yes\"; else print \"no\";");
+    // 0:  OP_TRUE
+    // 1:  OP_JUMP_IF_FALSE  2: 0  3: 7   (→ pos 11)
+    // 4:  OP_POP
+    // 5:  OP_CONSTANT  6: 0   ("yes")
+    // 7:  OP_PRINT
+    // 8:  OP_JUMP  9: 0  10: 4  (→ pos 15)
+    // 11: OP_POP
+    // 12: OP_CONSTANT  13: 1  ("no")
+    // 14: OP_PRINT
+    // 15: OP_RETURN
+    CHECK(chunk[0] == OP_TRUE);
+    CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+    CHECK(chunk[2] == 0);
+    CHECK(chunk[3] == 7);
+    CHECK(chunk[4] == OP_POP);
+    CHECK(chunk[7] == OP_PRINT);
+    CHECK(chunk[8] == OP_JUMP);
+    CHECK(chunk[9] == 0);
+    CHECK(chunk[10] == 4);
+    CHECK(chunk[11] == OP_POP);
+    CHECK(chunk[14] == OP_PRINT);
+    CHECK(chunk[15] == OP_RETURN);
   }
 }

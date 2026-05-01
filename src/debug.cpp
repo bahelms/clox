@@ -11,6 +11,7 @@ int simple_instruction(std::string_view, int);
 int constant_instruction(std::string_view, const Chunk &, int);
 int byte_instruction(std::string_view, const Chunk &, int);
 int slot_instruction(std::string_view, const Chunk &, int);
+int jump_instruction(std::string_view, int, const Chunk &, int);
 
 void disassemble_chunk(const Chunk &chunk, std::string name) {
   std::cout << "== " << name << " ==\n";
@@ -33,6 +34,10 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
   switch (instruction) {
   case OP_PRINT:
     return simple_instruction("OP_PRINT", offset);
+  case OP_JUMP:
+    return jump_instruction("OP_JUMP", 1, chunk, offset);
+  case OP_JUMP_IF_FALSE:
+    return jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
   case OP_RETURN:
     return simple_instruction("OP_RETURN", offset);
   case OP_CONSTANT:
@@ -113,6 +118,14 @@ int slot_instruction(std::string_view name, const Chunk &chunk, int offset) {
   uint8_t slot = chunk[offset + 1];
   std::cout << std::format("{:<16s} {:4d}\n", name, slot);
   return offset + 2;
+}
+
+int jump_instruction(std::string_view name, int sign, const Chunk &chunk,
+                     int offset) {
+  uint16_t jump = chunk[offset + 1] << 8 | chunk[offset + 2];
+  std::cout << std::format("{:<16s} {:4d} -> {}\n", name, offset,
+                           offset + 3 + sign * jump);
+  return offset + 3;
 }
 
 void print_stack(Value *stack, Value *stack_top) {

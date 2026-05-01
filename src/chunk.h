@@ -29,6 +29,8 @@ enum OpCode {
   OP_NOT,
   OP_NEGATE,
   OP_PRINT,
+  OP_JUMP,
+  OP_JUMP_IF_FALSE,
   OP_RETURN
 };
 
@@ -46,4 +48,5 @@ public:
   uint8_t write_constant(Value value);
   Value get_constant(int index) const;
   int get_line(int instruction_index) const;
+  void set_offset(int offset, uint8_t value) { code[offset] = value; }
 };

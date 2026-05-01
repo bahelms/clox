@@ -166,6 +166,17 @@ InterpretResult VM::run() {
       std::cout << '\n';
       break;
     }
+    case OP_JUMP: {
+      ip += read_short();
+      break;
+    }
+    case OP_JUMP_IF_FALSE: {
+      uint16_t offset = read_short();
+      if (is_falsey(peek(0))) {
+        ip += offset;
+      }
+      break;
+    }
     case OP_RETURN: {
       return InterpretResult::Ok;
     }
@@ -177,6 +188,11 @@ InterpretResult VM::run() {
 }
 
 uint8_t VM::read_byte() { return *ip++; }
+
+uint16_t VM::read_short() {
+  ip += 2;
+  return ip[-2] << 8 | ip[-1];
+}
 
 void VM::push(Value value) {
   *stack_top = value;
@@ -381,8 +397,7 @@ TEST_CASE("VM::interpret") {
 
   SUBCASE("inner scope shadows outer local") {
     std::string output = capture_stdout([&] {
-      CHECK(vm.interpret(
-                "{ var x = 1; { var x = 2; print x; } print x; }") ==
+      CHECK(vm.interpret("{ var x = 1; { var x = 2; print x; } print x; }") ==
             InterpretResult::Ok);
     });
     CHECK(output == "2\n1\n");
@@ -428,12 +443,63 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("globals persist across interpret calls") {
-    capture_stdout([&] {
-      CHECK(vm.interpret("var z = 99;") == InterpretResult::Ok);
-    });
-    std::string output = capture_stdout([&] {
-      CHECK(vm.interpret("print z;") == InterpretResult::Ok);
-    });
+    capture_stdout(
+        [&] { CHECK(vm.interpret("var z = 99;") == InterpretResult::Ok); });
+    std::string output = capture_stdout(
+        [&] { CHECK(vm.interpret("print z;") == InterpretResult::Ok); });
     CHECK(output == "99\n");
+  }
+
+  SUBCASE("if with true condition executes then-branch") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (true) print \"yes\";") == InterpretResult::Ok);
+    });
+    CHECK(output == "yes\n");
+  }
+
+  SUBCASE("if with false condition skips then-branch") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (false) print \"yes\";") == InterpretResult::Ok);
+    });
+    CHECK(output == "");
+  }
+
+  SUBCASE("if-else with true condition executes then-branch") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (true) print \"yes\"; else print \"no\";") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "yes\n");
+  }
+
+  SUBCASE("if-else with false condition executes else-branch") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (false) print \"yes\"; else print \"no\";") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "no\n");
+  }
+
+  SUBCASE("nil is falsey in if condition") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (nil) print \"yes\"; else print \"no\";") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "no\n");
+  }
+
+  SUBCASE("numbers are truthy in if condition") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (0) print \"yes\"; else print \"no\";") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "yes\n");
+  }
+
+  SUBCASE("comparison expression as if condition") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("if (1 < 2) print \"yes\";") == InterpretResult::Ok);
+    });
+    CHECK(output == "yes\n");
   }
 }

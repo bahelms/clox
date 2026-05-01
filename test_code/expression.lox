@@ -1,2 +1,10 @@
 var result = (-1 + 2) * 3 - -4;
+print "Result: ";
 print result;
+
+if (result == 3) {
+  print "It's 3!";
+} else {
+  print "It's not 3. :(";
+}
+
