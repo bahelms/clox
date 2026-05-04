@@ -84,6 +84,8 @@ public:
   void literal(bool can_assign = false);
   void string(bool can_assign = false);
   void variable(bool can_assign);
+  void and_(bool can_assign);
+  void or_(bool can_assign);
 };
 
 using ParseFn = void (Compiler::*)(bool can_assign);

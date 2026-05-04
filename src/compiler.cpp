@@ -37,7 +37,7 @@ ParseRule rules[] = {
     {&Compiler::variable, NULL, Precedence::None},           // Identifier
     {&Compiler::string, NULL, Precedence::None},             // String
     {&Compiler::number, NULL, Precedence::None},             // Number
-    {NULL, NULL, Precedence::None},                          // And
+    {NULL, &Compiler::and_, Precedence::And},                // And
     {NULL, NULL, Precedence::None},                          // Class
     {NULL, NULL, Precedence::None},                          // Else
     {&Compiler::literal, NULL, Precedence::None},            // False
@@ -45,7 +45,7 @@ ParseRule rules[] = {
     {NULL, NULL, Precedence::None},                          // Fun
     {NULL, NULL, Precedence::None},                          // If
     {&Compiler::literal, NULL, Precedence::None},            // Nil
-    {NULL, NULL, Precedence::None},                          // Or
+    {NULL, &Compiler::or_, Precedence::Or},                  // Or
     {NULL, NULL, Precedence::None},                          // Print
     {NULL, NULL, Precedence::None},                          // Return
     {NULL, NULL, Precedence::None},                          // Super
@@ -425,6 +425,22 @@ int Compiler::resolve_local(const Token &name) {
   return -1;
 }
 
+void Compiler::and_(bool can_assign) {
+  int end_jump = emit_jump(OP_JUMP_IF_FALSE);
+  emit_byte(OP_POP);
+  parse_precedence(Precedence::And);
+  patch_jump(end_jump);
+}
+
+void Compiler::or_(bool can_assign) {
+  int else_jump = emit_jump(OP_JUMP_IF_FALSE);
+  int end_jump = emit_jump(OP_JUMP);
+  patch_jump(else_jump);
+  emit_byte(OP_POP);
+  parse_precedence(Precedence::Or);
+  patch_jump(end_jump);
+}
+
 void Compiler::end() {
   emit_return();
 #ifdef DEBUG_PRINT_CODE
@@ -685,6 +701,46 @@ TEST_CASE("Compiler: global variable slot assignment") {
     CHECK(chunk1[3] == 0);
     CHECK(chunk2[3] == 0);
   }
+}
+
+TEST_CASE("Compiler: and operator") {
+  auto chunk = compile_source("true and false;");
+  // 0:  OP_TRUE
+  // 1:  OP_JUMP_IF_FALSE  2: 0  3: 2   (→ pos 6, expression OP_POP)
+  // 4:  OP_POP
+  // 5:  OP_FALSE
+  // 6:  OP_POP   (expression_statement)
+  // 7:  OP_RETURN
+  CHECK(chunk[0] == OP_TRUE);
+  CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+  CHECK(chunk[2] == 0);
+  CHECK(chunk[3] == 2);
+  CHECK(chunk[4] == OP_POP);
+  CHECK(chunk[5] == OP_FALSE);
+  CHECK(chunk[6] == OP_POP);
+  CHECK(chunk[7] == OP_RETURN);
+}
+
+TEST_CASE("Compiler: or operator") {
+  auto chunk = compile_source("true or false;");
+  // 0:  OP_TRUE
+  // 1:  OP_JUMP_IF_FALSE  2: 0  3: 3   (→ pos 7, OP_POP before RHS)
+  // 4:  OP_JUMP  5: 0  6: 2            (→ pos 9, expression OP_POP)
+  // 7:  OP_POP
+  // 8:  OP_FALSE
+  // 9:  OP_POP   (expression_statement)
+  // 10: OP_RETURN
+  CHECK(chunk[0] == OP_TRUE);
+  CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+  CHECK(chunk[2] == 0);
+  CHECK(chunk[3] == 3);
+  CHECK(chunk[4] == OP_JUMP);
+  CHECK(chunk[5] == 0);
+  CHECK(chunk[6] == 2);
+  CHECK(chunk[7] == OP_POP);
+  CHECK(chunk[8] == OP_FALSE);
+  CHECK(chunk[9] == OP_POP);
+  CHECK(chunk[10] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: if statement") {
