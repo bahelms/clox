@@ -201,8 +201,12 @@ void Compiler::mark_initialized() {
 void Compiler::statement() {
   if (match(TokenType::Print)) {
     print_statement();
+  } else if (match(TokenType::For)) {
+    for_statement();
   } else if (match(TokenType::If)) {
     if_statement();
+  } else if (match(TokenType::While)) {
+    while_statement();
   } else if (match(TokenType::LeftBrace)) {
     begin_scope();
     block();
@@ -216,6 +220,46 @@ void Compiler::print_statement() {
   expression();
   parser.consume(TokenType::Semicolon, "Expect ';' after value");
   emit_byte(OP_PRINT);
+}
+
+void Compiler::for_statement() {
+  begin_scope();
+  parser.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+  if (match(TokenType::Semicolon)) {
+    // no initializer
+  } else if (match(TokenType::Var)) {
+    var_declaration();
+  } else {
+    expression_statement();
+  }
+
+  int loop_start = current_chunk->size();
+  int exit_jump = -1;
+  if (!match(TokenType::Semicolon)) {
+    expression();
+    parser.consume(TokenType::Semicolon, "Expect ';' after loop condition.");
+    exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+    emit_byte(OP_POP);
+  }
+
+  if (!match(TokenType::RightParen)) {
+    int body_jump = emit_jump(OP_JUMP);
+    int increment_start = current_chunk->size();
+    expression();
+    emit_byte(OP_POP);
+    parser.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+    emit_loop(loop_start);
+    loop_start = increment_start;
+    patch_jump(body_jump);
+  }
+
+  statement();
+  emit_loop(loop_start);
+  if (exit_jump != -1) {
+    patch_jump(exit_jump);
+    emit_byte(OP_POP);
+  }
+  end_scope();
 }
 
 void Compiler::if_statement() {
@@ -251,6 +295,30 @@ void Compiler::patch_jump(int instr_offset) {
 
   current_chunk->set_offset(instr_offset, (jump >> 8) & 0xff);
   current_chunk->set_offset(instr_offset + 1, jump & 0xff);
+}
+
+void Compiler::while_statement() {
+  int loop_start = current_chunk->size();
+  parser.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+  expression();
+  parser.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+  int exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+  emit_byte(OP_POP);
+  statement();
+  emit_loop(loop_start);
+  patch_jump(exit_jump);
+  emit_byte(OP_POP);
+}
+
+void Compiler::emit_loop(int loop_start) {
+  emit_byte(OP_LOOP);
+  int offset = current_chunk->size() - loop_start + 2;
+  if (offset > UINT16_MAX) {
+    parser.error("Loop body too large.");
+  }
+  emit_byte((offset >> 8) & 0xff);
+  emit_byte(offset & 0xff);
 }
 
 void Compiler::block() {
@@ -743,6 +811,30 @@ TEST_CASE("Compiler: or operator") {
   CHECK(chunk[10] == OP_RETURN);
 }
 
+TEST_CASE("Compiler: while statement") {
+  auto chunk = compile_source("while (true) print \"yes\";");
+  // 0:  OP_TRUE
+  // 1:  OP_JUMP_IF_FALSE  2: 0  3: 7   (→ pos 11, exit OP_POP)
+  // 4:  OP_POP
+  // 5:  OP_CONSTANT  6: const_idx
+  // 7:  OP_PRINT
+  // 8:  OP_LOOP  9: 0  10: 11          (→ back to pos 0)
+  // 11: OP_POP
+  // 12: OP_RETURN
+  CHECK(chunk[0] == OP_TRUE);
+  CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+  CHECK(chunk[2] == 0);
+  CHECK(chunk[3] == 7);
+  CHECK(chunk[4] == OP_POP);
+  CHECK(chunk[5] == OP_CONSTANT);
+  CHECK(chunk[7] == OP_PRINT);
+  CHECK(chunk[8] == OP_LOOP);
+  CHECK(chunk[9] == 0);
+  CHECK(chunk[10] == 11);
+  CHECK(chunk[11] == OP_POP);
+  CHECK(chunk[12] == OP_RETURN);
+}
+
 TEST_CASE("Compiler: if statement") {
   SUBCASE("if without else emits JUMP_IF_FALSE, then-branch, JUMP, POP") {
     auto chunk = compile_source("if (true) print \"yes\";");
@@ -791,5 +883,100 @@ TEST_CASE("Compiler: if statement") {
     CHECK(chunk[11] == OP_POP);
     CHECK(chunk[14] == OP_PRINT);
     CHECK(chunk[15] == OP_RETURN);
+  }
+}
+
+TEST_CASE("Compiler: for statement") {
+  SUBCASE("infinite loop emits body then LOOP back to start") {
+    auto chunk = compile_source(R"(for (;;) print "x";)");
+    // 0:  OP_CONSTANT  0 (const idx)
+    // 2:  OP_PRINT
+    // 3:  OP_LOOP  0  6  (→ back to pos 0)
+    // 6:  OP_POPN  0 (count)
+    // 8:  OP_RETURN
+    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[2] == OP_PRINT);
+    CHECK(chunk[3] == OP_LOOP);
+    CHECK(chunk[4] == 0);
+    CHECK(chunk[5] == 6);
+    CHECK(chunk[6] == OP_POPN);
+    CHECK(chunk[7] == 0);
+    CHECK(chunk[8] == OP_RETURN);
+  }
+
+  SUBCASE("condition-only for emits JUMP_IF_FALSE around body and exit pop") {
+    auto chunk = compile_source(R"(for (; false;) print "x";)");
+    // 0:  OP_FALSE
+    // 1:  OP_JUMP_IF_FALSE  0  7  (→ pos 11, exit pop)
+    // 4:  OP_POP
+    // 5:  OP_CONSTANT  0 (const idx)
+    // 7:  OP_PRINT
+    // 8:  OP_LOOP  0  11  (→ back to pos 0)
+    // 11: OP_POP
+    // 12: OP_POPN  0 (count)
+    // 14: OP_RETURN
+    CHECK(chunk[0] == OP_FALSE);
+    CHECK(chunk[1] == OP_JUMP_IF_FALSE);
+    CHECK(chunk[2] == 0);
+    CHECK(chunk[3] == 7);
+    CHECK(chunk[4] == OP_POP);
+    CHECK(chunk[5] == OP_CONSTANT);
+    CHECK(chunk[7] == OP_PRINT);
+    CHECK(chunk[8] == OP_LOOP);
+    CHECK(chunk[9] == 0);
+    CHECK(chunk[10] == 11);
+    CHECK(chunk[11] == OP_POP);
+    CHECK(chunk[12] == OP_POPN);
+    CHECK(chunk[13] == 0);
+    CHECK(chunk[14] == OP_RETURN);
+  }
+
+  SUBCASE(
+      "full for loop: var init, condition, increment emits correct structure") {
+    auto chunk = compile_source("for (var i = 0; i < 3; i = i + 1) print i;");
+    // 0:  OP_CONSTANT  0 (const idx, 0.0)  <- var i = 0
+    // 2:  OP_GET_LOCAL  0 (slot)           <- condition: load i
+    // 4:  OP_CONSTANT  1 (const idx, 3.0)
+    // 6:  OP_LESS
+    // 7:  OP_JUMP_IF_FALSE  0  21  (→ pos 31, exit pop)
+    // 10: OP_POP
+    // 11: OP_JUMP  0  11  (→ pos 25, body)
+    // 14: OP_GET_LOCAL  0 (slot)    <- increment: load i
+    // 16: OP_CONSTANT  2 (const idx, 1.0)
+    // 18: OP_ADD
+    // 19: OP_SET_LOCAL  0 (slot)    <- store into i
+    // 21: OP_POP
+    // 22: OP_LOOP  0  23  (→ back to pos 2, condition)
+    // 25: OP_GET_LOCAL  0 (slot)    <- body: load i
+    // 27: OP_PRINT
+    // 28: OP_LOOP  0  17  (→ back to pos 14, increment)
+    // 31: OP_POP                    <- exit: pop condition value
+    // 32: OP_POPN  1 (count)        <- pop i
+    // 34: OP_RETURN
+    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[0] == 0);
+    CHECK(chunk.get_constant(chunk[1]).as_number() == 0.0);
+    CHECK(chunk[2] == OP_GET_LOCAL);
+    CHECK(chunk[3] == 0);
+    CHECK(chunk[6] == OP_LESS);
+    CHECK(chunk[7] == OP_JUMP_IF_FALSE);
+    CHECK(chunk[8] == 0);
+    CHECK(chunk[9] == 21);
+    CHECK(chunk[10] == OP_POP);
+    CHECK(chunk[11] == OP_JUMP);
+    CHECK(chunk[12] == 0);
+    CHECK(chunk[13] == 11);
+    CHECK(chunk[22] == OP_LOOP);
+    CHECK(chunk[23] == 0);
+    CHECK(chunk[24] == 23);
+    CHECK(chunk[25] == OP_GET_LOCAL);
+    CHECK(chunk[27] == OP_PRINT);
+    CHECK(chunk[28] == OP_LOOP);
+    CHECK(chunk[29] == 0);
+    CHECK(chunk[30] == 17);
+    CHECK(chunk[31] == OP_POP);
+    CHECK(chunk[32] == OP_POPN);
+    CHECK(chunk[33] == 1);
+    CHECK(chunk[34] == OP_RETURN);
   }
 }

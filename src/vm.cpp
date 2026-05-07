@@ -177,6 +177,10 @@ InterpretResult VM::run() {
       }
       break;
     }
+    case OP_LOOP: {
+      ip -= read_short();
+      break;
+    }
     case OP_RETURN: {
       return InterpretResult::Ok;
     }
