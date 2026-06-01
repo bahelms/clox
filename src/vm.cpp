@@ -212,13 +212,13 @@ Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 
 void VM::reset_stack() { stack_top = stack; }
 
-std::optional<uint8_t> VM::get_or_alloc_global_slot(const std::string &name) {
+std::expected<uint8_t, const char *> VM::get_or_alloc_global_slot(const std::string &name) {
   auto it = global_slots.find(name);
   if (it != global_slots.end()) {
     return it->second;
   }
   if (global_slots.size() == 256) {
-    return std::nullopt;
+    return std::unexpected("Too many global variables in one program.");
   }
   uint8_t slot = static_cast<uint8_t>(global_slots.size());
   global_slots.emplace(name, slot);

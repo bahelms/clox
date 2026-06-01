@@ -1,5 +1,5 @@
 #include "value.h"
-#include <iostream>
+#include <print>
 
 #include "doctest.h"
 #include "test_utils.h"
@@ -28,16 +28,16 @@ bool values_equal(const Value a, const Value b) {
 void print_value(Value value) {
   switch (value.type) {
   case ValueType::Number:
-    std::cout << std::format("{:g}", value.as_number());
+    std::print("{:g}", value.as_number());
     break;
   case ValueType::Object:
     print_object(value);
     break;
   case ValueType::Nil:
-    std::cout << "nil";
+    std::print("nil");
     break;
   case ValueType::Boolean:
-    std::cout << std::format("{}", value.as_boolean() ? "true" : "false");
+    std::print("{}", value.as_boolean() ? "true" : "false");
     break;
   }
 }

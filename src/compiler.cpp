@@ -177,11 +177,11 @@ void Compiler::add_local(const Token name) {
 uint8_t Compiler::identifier_constant(Token *name) {
   auto slot =
       vm.get_or_alloc_global_slot(std::string(name->start, name->length));
-  if (!slot.has_value()) {
-    parser.error("Too many global variables in one program.");
+  if (!slot) {
+    parser.error(slot.error());
     return 0;
   }
-  return slot.value();
+  return *slot;
 }
 
 void Compiler::define_variable(uint8_t global_var_idx) {

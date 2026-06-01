@@ -1,5 +1,5 @@
 #include <cstdint>
-#include <iostream>
+#include <print>
 
 #include "chunk.h"
 #include "debug.h"
@@ -14,7 +14,7 @@ int slot_instruction(std::string_view, const Chunk &, int);
 int jump_instruction(std::string_view, int, const Chunk &, int);
 
 void disassemble_chunk(const Chunk &chunk, std::string name) {
-  std::cout << "== " << name << " ==\n";
+  std::println("== {} ==", name);
 
   for (int offset = 0; offset < chunk.size();) {
     offset = disassemble_instruction(chunk, offset);
@@ -22,12 +22,12 @@ void disassemble_chunk(const Chunk &chunk, std::string name) {
 }
 
 int disassemble_instruction(const Chunk &chunk, int offset) {
-  std::cout << std::format("{:04d} ", offset);
+  std::print("{:04d} ", offset);
 
   if (offset > 0 && chunk.get_line(offset) == chunk.get_line(offset - 1)) {
-    std::cout << "   | ";
+    std::print("   | ");
   } else {
-    std::cout << std::format("{:4d} ", chunk.get_line(offset));
+    std::print("{:4d} ", chunk.get_line(offset));
   }
 
   uint8_t instruction = chunk[offset];
@@ -89,7 +89,7 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
   case OP_NEGATE:
     return simple_instruction("OP_NEGATE", offset);
   default:
-    std::cout << "Unknown opcode " << instruction << std::endl;
+    std::println("Unknown opcode {}", instruction);
     return offset + 1;
   }
 
@@ -98,47 +98,46 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
 
 int byte_instruction(std::string_view name, const Chunk &chunk, int offset) {
   uint8_t slot = chunk[offset + 1];
-  std::cout << std::format("{:<16s} {:4d}\n", name, slot);
+  std::println("{:<16s} {:4d}", name, slot);
   return offset + 2;
 }
 
 int simple_instruction(std::string_view name, int offset) {
-  std::cout << name << std::endl;
+  std::println("{}", name);
   return offset + 1;
 }
 
 int constant_instruction(std::string_view name, const Chunk &chunk,
                          int offset) {
   uint8_t constant_idx = chunk[offset + 1];
-  std::cout << std::format("{:<16s} {:4d} '", name, constant_idx);
+  std::print("{:<16s} {:4d} '", name, constant_idx);
   print_value(chunk.get_constant(constant_idx));
-  std::cout << "'" << std::endl;
+  std::println("'");
   return offset + 2;
 }
 
 int slot_instruction(std::string_view name, const Chunk &chunk, int offset) {
   uint8_t slot = chunk[offset + 1];
-  std::cout << std::format("{:<16s} {:4d}\n", name, slot);
+  std::println("{:<16s} {:4d}", name, slot);
   return offset + 2;
 }
 
 int jump_instruction(std::string_view name, int sign, const Chunk &chunk,
                      int offset) {
   uint16_t jump = chunk[offset + 1] << 8 | chunk[offset + 2];
-  std::cout << std::format("{:<16s} {:4d} -> {}\n", name, offset,
-                           offset + 3 + sign * jump);
+  std::println("{:<16s} {:4d} -> {}", name, offset, offset + 3 + sign * jump);
   return offset + 3;
 }
 
 void print_stack(Value *stack, Value *stack_top) {
-  std::cout << "          ";
+  std::print("          ");
   while (stack < stack_top) {
-    std::cout << "[ ";
+    std::print("[ ");
     print_value(*stack);
-    std::cout << " ]";
+    std::print(" ]");
     stack++;
   }
-  std::cout << "\n";
+  std::println();
 }
 
 TEST_CASE("disassemble_chunk") {

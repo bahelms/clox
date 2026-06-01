@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <expected>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,5 +46,5 @@ public:
   ~VM();
   InterpretResult interpret(std::string source);
   ObjString *alloc_string(std::string s);
-  std::optional<uint8_t> get_or_alloc_global_slot(const std::string &name);
+  std::expected<uint8_t, const char *> get_or_alloc_global_slot(const std::string &name);
 };

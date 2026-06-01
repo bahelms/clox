@@ -3,13 +3,34 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
 inline std::string capture_stdout(std::function<void()> fn) {
-  std::ostringstream captured;
-  std::streambuf *old = std::cout.rdbuf(captured.rdbuf());
+  // Redirect fd 1 at the OS level so both std::print (FILE* stdout) and
+  // std::cout (synced with stdio) are captured in the correct order.
+  int pipefd[2];
+  pipe(pipefd);
+  std::cout.flush();
+  fflush(stdout);
+  int saved_fd = dup(STDOUT_FILENO);
+  dup2(pipefd[1], STDOUT_FILENO);
+  close(pipefd[1]);
+
   fn();
-  std::cout.rdbuf(old);
-  return captured.str();
+
+  std::cout.flush();
+  fflush(stdout);
+  dup2(saved_fd, STDOUT_FILENO);
+  close(saved_fd);
+
+  std::string result;
+  char buf[4096];
+  ssize_t n;
+  while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
+    result.append(buf, n);
+  }
+  close(pipefd[0]);
+  return result;
 }
 
 inline void suppress_stderr(std::function<void()> fn) {
