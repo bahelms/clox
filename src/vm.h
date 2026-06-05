@@ -7,6 +7,11 @@
 #include <vector>
 
 #include "chunk.h"
+#include "object.h"
+
+static constexpr int UINT8_COUNT = UINT8_MAX + 1;
+static constexpr int FRAMES_MAX = 64;
+static constexpr int STACK_MAX = FRAMES_MAX * UINT8_COUNT;
 
 enum class InterpretResult {
   Ok,
@@ -14,13 +19,19 @@ enum class InterpretResult {
   RuntimeError,
 };
 
-class VM {
-  static constexpr int STACK_MAX = 256;
-  Chunk chunk{};
+struct CallFrame {
+  ObjFunction *function{};
   const uint8_t *ip{};
+  Value *slots{};
+};
+
+class VM {
   Value stack[STACK_MAX]{};
   Value *stack_top{};
   Object *objects{};
+  CallFrame frames[FRAMES_MAX];
+  int frame_count{};
+
   std::unordered_map<std::string, ObjString *> interned_strings{};
   std::unordered_map<std::string, uint8_t> global_slots{};
   std::vector<Value> globals{};
@@ -31,9 +42,12 @@ class VM {
   void push(Value value);
   Value pop();
   Value peek(int distance);
+  CallFrame &current_frame();
+  void enter_function(ObjFunction *function);
   void reset_stack();
   uint8_t read_byte();
   uint16_t read_short();
+  Value read_constant();
 
   template <typename ValueBuilder, typename Op>
   InterpretResult binary_op(ValueBuilder builder, Op op);
@@ -46,5 +60,6 @@ public:
   ~VM();
   InterpretResult interpret(std::string source);
   ObjString *alloc_string(std::string s);
-  std::expected<uint8_t, const char *> get_or_alloc_global_slot(const std::string &name);
+  std::expected<uint8_t, const char *>
+  get_or_alloc_global_slot(const std::string &name);
 };

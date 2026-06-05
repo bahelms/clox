@@ -61,14 +61,13 @@ static ParseRule &get_rule(TokenType operator_type) {
   return rules[static_cast<size_t>(operator_type)];
 }
 
-bool Compiler::compile(Chunk &chunk) {
-  current_chunk = &chunk;
+ObjFunction *Compiler::compile() {
   parser.advance();
   while (!match(TokenType::Eof)) {
     declaration();
   }
-  end();
-  return !parser.had_error;
+  ObjFunction *function = end();
+  return parser.had_error ? NULL : function;
 }
 
 bool Compiler::match(TokenType type) {
@@ -137,7 +136,7 @@ uint8_t Compiler::parse_variable(const char *error_msg) {
   if (scope_depth > 0) {
     return 0;
   }
-  return identifier_constant(&parser.previous);
+  return identifier_constant(parser.previous);
 }
 
 void Compiler::declare_variable() {
@@ -158,12 +157,12 @@ void Compiler::declare_variable() {
   add_local(name);
 }
 
-bool Compiler::identifiers_equal(const Token a, const Token b) {
+bool Compiler::identifiers_equal(const Token &a, const Token &b) {
   return std::string_view(a.start, a.length) ==
          std::string_view(b.start, b.length);
 }
 
-void Compiler::add_local(const Token name) {
+void Compiler::add_local(const Token &name) {
   if (local_count == UINT8_MAX + 1) {
     parser.error("Too many local variables in function.");
     return;
@@ -174,9 +173,8 @@ void Compiler::add_local(const Token name) {
   local->depth = -1;
 }
 
-uint8_t Compiler::identifier_constant(Token *name) {
-  auto slot =
-      vm.get_or_alloc_global_slot(std::string(name->start, name->length));
+uint8_t Compiler::identifier_constant(const Token &name) {
+  auto slot = vm.get_or_alloc_global_slot(std::string(name.start, name.length));
   if (!slot) {
     parser.error(slot.error());
     return 0;
@@ -233,7 +231,7 @@ void Compiler::for_statement() {
     expression_statement();
   }
 
-  int loop_start = current_chunk->size();
+  int loop_start = current_chunk()->size();
   int exit_jump = -1;
   if (!match(TokenType::Semicolon)) {
     expression();
@@ -244,7 +242,7 @@ void Compiler::for_statement() {
 
   if (!match(TokenType::RightParen)) {
     int body_jump = emit_jump(OP_JUMP);
-    int increment_start = current_chunk->size();
+    int increment_start = current_chunk()->size();
     expression();
     emit_byte(OP_POP);
     parser.consume(TokenType::RightParen, "Expect ')' after for clauses.");
@@ -284,21 +282,21 @@ int Compiler::emit_jump(OpCode op) {
   emit_byte(op);
   emit_byte(0xff);
   emit_byte(0xff);
-  return current_chunk->size() - 2;
+  return current_chunk()->size() - 2;
 }
 
 void Compiler::patch_jump(int instr_offset) {
-  int jump = current_chunk->size() - instr_offset - 2;
+  int jump = current_chunk()->size() - instr_offset - 2;
   if (jump > UINT16_MAX) {
     parser.error("Too much code to jump over.");
   }
 
-  current_chunk->set_offset(instr_offset, (jump >> 8) & 0xff);
-  current_chunk->set_offset(instr_offset + 1, jump & 0xff);
+  current_chunk()->set_offset(instr_offset, (jump >> 8) & 0xff);
+  current_chunk()->set_offset(instr_offset + 1, jump & 0xff);
 }
 
 void Compiler::while_statement() {
-  int loop_start = current_chunk->size();
+  int loop_start = current_chunk()->size();
   parser.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
   expression();
   parser.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -313,7 +311,7 @@ void Compiler::while_statement() {
 
 void Compiler::emit_loop(int loop_start) {
   emit_byte(OP_LOOP);
-  int offset = current_chunk->size() - loop_start + 2;
+  int offset = current_chunk()->size() - loop_start + 2;
   if (offset > UINT16_MAX) {
     parser.error("Loop body too large.");
   }
@@ -461,14 +459,14 @@ void Compiler::variable(bool can_assign) {
   named_variable(parser.previous, can_assign);
 }
 
-void Compiler::named_variable(Token name, bool can_assign) {
+void Compiler::named_variable(const Token &name, bool can_assign) {
   uint8_t get_op{}, set_op{};
   int arg = resolve_local(name);
   if (arg != -1) {
     get_op = OP_GET_LOCAL;
     set_op = OP_SET_LOCAL;
   } else {
-    arg = identifier_constant(&name);
+    arg = identifier_constant(name);
     get_op = OP_GET_GLOBAL;
     set_op = OP_SET_GLOBAL;
   }
@@ -509,19 +507,21 @@ void Compiler::or_(bool can_assign) {
   patch_jump(end_jump);
 }
 
-void Compiler::end() {
+ObjFunction *Compiler::end() {
   emit_return();
 #ifdef DEBUG_PRINT_CODE
   if (!parser.had_error) {
-    disassemble_chunk(*current_chunk, "code");
+    disassemble_chunk(*current_chunk(),
+                      function->name ? function->name->chars : "<script>");
   }
 #endif
+  return function;
 }
 
 void Compiler::emit_return() { emit_byte(OP_RETURN); }
 
 void Compiler::emit_byte(uint8_t byte) {
-  current_chunk->write(byte, parser.previous.line);
+  current_chunk()->write(byte, parser.previous.line);
 }
 
 void Compiler::emit_bytes(uint8_t byte1, uint8_t byte2) {
@@ -534,7 +534,7 @@ void Compiler::emit_constant(Value value) {
 }
 
 uint8_t Compiler::make_constant(Value value) {
-  int index = current_chunk->write_constant(value);
+  int index = current_chunk()->write_constant(value);
   if (index > UINT8_MAX) {
     parser.error("Too many constants in one chunk.");
     return 0;
@@ -543,11 +543,9 @@ uint8_t Compiler::make_constant(Value value) {
 }
 
 static Chunk compile_source(std::string_view src) {
-  Chunk chunk;
   VM vm;
   Compiler compiler(src, vm);
-  compiler.compile(chunk);
-  return chunk;
+  return *compiler.compile()->chunk;
 }
 
 TEST_CASE("Compiler: number literal") {
@@ -652,11 +650,10 @@ TEST_CASE("Compiler: comparison operators emit single opcodes") {
   }
 }
 
-TEST_CASE("Compiler: compile returns false on error") {
-  Chunk chunk;
+TEST_CASE("Compiler: compile returns null on error") {
   VM vm;
   Compiler compiler("@", vm);
-  suppress_stderr([&] { CHECK(compiler.compile(chunk) == false); });
+  suppress_stderr([&] { CHECK(compiler.compile() == nullptr); });
 }
 
 TEST_CASE("Compiler: local variable declaration leaves value on stack") {
@@ -671,14 +668,14 @@ TEST_CASE("Compiler: local variable declaration leaves value on stack") {
 
 TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
   auto chunk = compile_source("{ var x = 1; print x; }");
-  // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 0)
-  // [2] OP_GET_LOCAL [3] 0         <- read x
+  // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 1; slot 0 is the script)
+  // [2] OP_GET_LOCAL [3] 1         <- read x
   // [4] OP_PRINT
   // [5] OP_POPN [6] 1
   // [7] OP_RETURN
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk[2] == OP_GET_LOCAL);
-  CHECK(chunk[3] == 0);
+  CHECK(chunk[3] == 1);
   CHECK(chunk[4] == OP_PRINT);
   CHECK(chunk[5] == OP_POPN);
   CHECK(chunk[6] == 1);
@@ -687,32 +684,32 @@ TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
 
 TEST_CASE("Compiler: local variable set emits OP_SET_LOCAL") {
   auto chunk = compile_source("{ var x = 1; x = 2; }");
-  // [0] OP_CONSTANT [1] idx(1.0)   <- initializer (slot 0)
+  // [0] OP_CONSTANT [1] idx(1.0)   <- initializer (slot 1; slot 0 is the script)
   // [2] OP_CONSTANT [3] idx(2.0)   <- rhs of assignment
-  // [4] OP_SET_LOCAL [5] 0         <- assign x
+  // [4] OP_SET_LOCAL [5] 1         <- assign x
   // [6] OP_POP                     <- expression_statement discards result
   // [7] OP_POPN [8] 1
   // [9] OP_RETURN
   CHECK(chunk[4] == OP_SET_LOCAL);
-  CHECK(chunk[5] == 0);
+  CHECK(chunk[5] == 1);
   CHECK(chunk[6] == OP_POP);
   CHECK(chunk[7] == OP_POPN);
 }
 
 TEST_CASE("Compiler: multiple locals get correct slot indices") {
   auto chunk = compile_source("{ var x = 1; var y = 2; print y; print x; }");
-  // slot 0 = x, slot 1 = y
+  // slot 0 = script, slot 1 = x, slot 2 = y
   // [0] OP_CONSTANT [1] idx(1.0)
   // [2] OP_CONSTANT [3] idx(2.0)
-  // [4] OP_GET_LOCAL [5] 1   <- y
+  // [4] OP_GET_LOCAL [5] 2   <- y
   // [6] OP_PRINT
-  // [7] OP_GET_LOCAL [8] 0   <- x
+  // [7] OP_GET_LOCAL [8] 1   <- x
   // [9] OP_PRINT
   // [10] OP_POPN [11] 2
   CHECK(chunk[4] == OP_GET_LOCAL);
-  CHECK(chunk[5] == 1);
+  CHECK(chunk[5] == 2);
   CHECK(chunk[7] == OP_GET_LOCAL);
-  CHECK(chunk[8] == 0);
+  CHECK(chunk[8] == 1);
   CHECK(chunk[10] == OP_POPN);
   CHECK(chunk[11] == 2);
 }
@@ -739,19 +736,13 @@ TEST_CASE("Compiler: global variable assignment emits OP_SET_GLOBAL") {
 
 TEST_CASE("Compiler: global variable slot assignment") {
   SUBCASE("first global gets slot 0") {
-    Chunk chunk;
-    VM vm;
-    Compiler compiler("var x = 1;", vm);
-    compiler.compile(chunk);
+    auto chunk = compile_source("var x = 1;");
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
     CHECK(chunk[3] == 0);
   }
 
   SUBCASE("second distinct global gets slot 1") {
-    Chunk chunk;
-    VM vm;
-    Compiler compiler("var x = 1; var y = 2;", vm);
-    compiler.compile(chunk);
+    auto chunk = compile_source("var x = 1; var y = 2;");
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
     CHECK(chunk[3] == 0);
     CHECK(chunk[6] == OP_DEFINE_GLOBAL);
@@ -760,12 +751,10 @@ TEST_CASE("Compiler: global variable slot assignment") {
 
   SUBCASE("same variable name reuses the same slot across interpret calls") {
     VM vm;
-    Chunk chunk1;
     Compiler c1("var a = 1;", vm);
-    c1.compile(chunk1);
-    Chunk chunk2;
+    Chunk chunk1 = *c1.compile()->chunk;
     Compiler c2("var a = 2;", vm);
-    c2.compile(chunk2);
+    Chunk chunk2 = *c2.compile()->chunk;
     CHECK(chunk1[3] == 0);
     CHECK(chunk2[3] == 0);
   }
@@ -934,20 +923,20 @@ TEST_CASE("Compiler: for statement") {
   SUBCASE(
       "full for loop: var init, condition, increment emits correct structure") {
     auto chunk = compile_source("for (var i = 0; i < 3; i = i + 1) print i;");
-    // 0:  OP_CONSTANT  0 (const idx, 0.0)  <- var i = 0
-    // 2:  OP_GET_LOCAL  0 (slot)           <- condition: load i
+    // 0:  OP_CONSTANT  0 (const idx, 0.0)  <- var i = 0 (slot 1; slot 0 is script)
+    // 2:  OP_GET_LOCAL  1 (slot)           <- condition: load i
     // 4:  OP_CONSTANT  1 (const idx, 3.0)
     // 6:  OP_LESS
     // 7:  OP_JUMP_IF_FALSE  0  21  (→ pos 31, exit pop)
     // 10: OP_POP
     // 11: OP_JUMP  0  11  (→ pos 25, body)
-    // 14: OP_GET_LOCAL  0 (slot)    <- increment: load i
+    // 14: OP_GET_LOCAL  1 (slot)    <- increment: load i
     // 16: OP_CONSTANT  2 (const idx, 1.0)
     // 18: OP_ADD
-    // 19: OP_SET_LOCAL  0 (slot)    <- store into i
+    // 19: OP_SET_LOCAL  1 (slot)    <- store into i
     // 21: OP_POP
     // 22: OP_LOOP  0  23  (→ back to pos 2, condition)
-    // 25: OP_GET_LOCAL  0 (slot)    <- body: load i
+    // 25: OP_GET_LOCAL  1 (slot)    <- body: load i
     // 27: OP_PRINT
     // 28: OP_LOOP  0  17  (→ back to pos 14, increment)
     // 31: OP_POP                    <- exit: pop condition value
@@ -957,7 +946,7 @@ TEST_CASE("Compiler: for statement") {
     CHECK(chunk[0] == 0);
     CHECK(chunk.get_constant(chunk[1]).as_number() == 0.0);
     CHECK(chunk[2] == OP_GET_LOCAL);
-    CHECK(chunk[3] == 0);
+    CHECK(chunk[3] == 1);
     CHECK(chunk[6] == OP_LESS);
     CHECK(chunk[7] == OP_JUMP_IF_FALSE);
     CHECK(chunk[8] == 0);

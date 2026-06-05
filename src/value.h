@@ -30,6 +30,11 @@ struct Value {
   static Value object(ObjString *obj_str) {
     return {ValueType::Object, {.object = obj_str}};
   }
+
+  static Value object(ObjFunction *obj_func) {
+    return {ValueType::Object, {.object = obj_func}};
+  }
+
   Object *as_object() const { return as.object; }
   bool is_object() { return type == ValueType::Object; }
 
@@ -37,6 +42,10 @@ struct Value {
     return is_object() && as_object()->type == ObjectType::String;
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
+
+  ObjFunction *as_function() const {
+    return static_cast<ObjFunction *>(as_object());
+  }
 
   const bool operator==(const Value &other_value) const {
     return values_equal(*this, other_value);

@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "chunk.h"
+#include "object.h"
 #include "parser.h"
 #include "scanner.h"
 
@@ -31,17 +32,24 @@ struct Local {
   int depth{};
 };
 
+enum class FunctionType {
+  Function,
+  Script,
+};
+
 class Compiler {
   std::string_view source{};
   Parser parser;
-  Chunk *current_chunk{};
   VM &vm;
+  ObjFunction *function{new ObjFunction()};
+  FunctionType type{FunctionType::Script};
 
   int local_count{};
   int scope_depth{};
   std::array<Local, UINT8_MAX + 1> locals{};
 
-  void end();
+  Chunk *current_chunk() { return function->chunk; };
+  ObjFunction *end();
   void emit_return();
   void emit_byte(uint8_t byte);
   void emit_bytes(uint8_t byte1, uint8_t byte2);
@@ -56,9 +64,9 @@ class Compiler {
   void var_declaration();
   uint8_t parse_variable(const char *error_msg);
   void declare_variable();
-  void add_local(Token name);
-  bool identifiers_equal(Token a, Token b);
-  uint8_t identifier_constant(Token *name);
+  void add_local(const Token &name);
+  bool identifiers_equal(const Token &a, const Token &b);
+  uint8_t identifier_constant(const Token &name);
   void define_variable(uint8_t global_var_idx);
   void mark_initialized();
   void statement();
@@ -71,15 +79,19 @@ class Compiler {
   void if_statement();
   void while_statement();
   void expression_statement();
-  void named_variable(Token name, bool can_assign);
+  void named_variable(const Token &name, bool can_assign);
   int resolve_local(const Token &name);
   void block();
   void begin_scope();
   void end_scope();
 
 public:
-  Compiler(std::string_view src, VM &vm) : source(src), parser(src), vm(vm) {};
-  bool compile(Chunk &chunk);
+  Compiler(std::string_view src, VM &vm) : source(src), parser(src), vm(vm) {
+    Local *local = &locals[local_count++];
+    local->name.start = "";
+  };
+
+  ObjFunction *compile();
   void grouping(bool can_assign = false);
   void unary(bool can_assign = false);
   void binary(bool can_assign = false);

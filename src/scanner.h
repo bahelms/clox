@@ -51,8 +51,8 @@ enum class TokenType {
 struct Token {
   TokenType type;
   const char *start;
-  int length;
-  int line;
+  int length{};
+  int line{};
 };
 
 class Scanner {

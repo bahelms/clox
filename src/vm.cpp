@@ -28,27 +28,39 @@ VM::~VM() {
 }
 
 InterpretResult VM::interpret(std::string source) {
-  Chunk new_chunk{};
   Compiler compiler{source, *this};
-  if (!compiler.compile(new_chunk)) {
+  ObjFunction *function = compiler.compile();
+  if (!function) {
     return InterpretResult::CompileError;
   }
-  chunk = std::move(new_chunk);
-  ip = chunk.data();
+
+  enter_function(function);
   return run();
+}
+
+CallFrame &VM::current_frame() { return frames[frame_count - 1]; }
+
+void VM::enter_function(ObjFunction *function) {
+  push(Value::object(function));
+  CallFrame &frame = frames[frame_count++];
+  frame.function = function;
+  frame.ip = function->chunk->data();
+  frame.slots = stack;
 }
 
 InterpretResult VM::run() {
   while (true) {
 #ifdef DEBUG_TRACE_EXECUTION
     print_stack(stack, stack_top);
-    disassemble_instruction(chunk, static_cast<int>(ip - chunk.data()));
+    CallFrame &frame = current_frame();
+    disassemble_instruction(frame.function->chunk,
+                            static_cast<int>(frame.ip - frame.chunk.data()));
 #endif
 
     uint8_t instr = read_byte();
     switch (instr) {
     case OP_CONSTANT: {
-      push(chunk.get_constant(read_byte()));
+      push(read_constant());
       break;
     }
     case OP_NIL:
@@ -70,12 +82,12 @@ InterpretResult VM::run() {
       break;
     case OP_GET_LOCAL: {
       uint8_t slot = read_byte();
-      push(stack[slot]);
+      push(current_frame().slots[slot]);
       break;
     }
     case OP_SET_LOCAL: {
       uint8_t slot = read_byte();
-      stack[slot] = peek(0);
+      current_frame().slots[slot] = peek(0);
       break;
     }
     case OP_GET_GLOBAL: {
@@ -167,18 +179,18 @@ InterpretResult VM::run() {
       break;
     }
     case OP_JUMP: {
-      ip += read_short();
+      current_frame().ip += read_short();
       break;
     }
     case OP_JUMP_IF_FALSE: {
       uint16_t offset = read_short();
       if (is_falsey(peek(0))) {
-        ip += offset;
+        current_frame().ip += offset;
       }
       break;
     }
     case OP_LOOP: {
-      ip -= read_short();
+      current_frame().ip -= read_short();
       break;
     }
     case OP_RETURN: {
@@ -191,11 +203,16 @@ InterpretResult VM::run() {
   }
 }
 
-uint8_t VM::read_byte() { return *ip++; }
+uint8_t VM::read_byte() { return *current_frame().ip++; }
 
 uint16_t VM::read_short() {
-  ip += 2;
-  return ip[-2] << 8 | ip[-1];
+  CallFrame &frame = current_frame();
+  frame.ip += 2;
+  return frame.ip[-2] << 8 | frame.ip[-1];
+}
+
+Value VM::read_constant() {
+  return current_frame().function->chunk->get_constant(read_byte());
 }
 
 void VM::push(Value value) {
@@ -212,7 +229,8 @@ Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 
 void VM::reset_stack() { stack_top = stack; }
 
-std::expected<uint8_t, const char *> VM::get_or_alloc_global_slot(const std::string &name) {
+std::expected<uint8_t, const char *>
+VM::get_or_alloc_global_slot(const std::string &name) {
   auto it = global_slots.find(name);
   if (it != global_slots.end()) {
     return it->second;
@@ -244,8 +262,9 @@ template <typename... Args>
 void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   std::cerr << std::format(fmt, std::forward<Args>(args)...) << '\n';
 
-  size_t instruction = ip - chunk.data() - 1;
-  int line = chunk.get_line(instruction);
+  CallFrame &frame = current_frame();
+  size_t instruction = frame.ip - frame.function->chunk->data() - 1;
+  int line = frame.function->chunk->get_line(instruction);
   std::cerr << std::format("[line {}] in script\n", line);
   reset_stack();
 }
