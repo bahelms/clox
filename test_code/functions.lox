@@ -1,0 +1,7 @@
+fun hey(a, b) {
+  var three = a;
+  three = three + b;
+  print three;
+}
+
+hey(3, 4);

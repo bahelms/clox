@@ -17,6 +17,7 @@ public:
   Parser(std::string_view source) : scanner(source) {}
   void advance();
   void error_at(Token &token, const char *error_msg);
+  void error_at_current(const char *error_msg);
   void error(const char *error_msg);
   void consume(TokenType type, const char *message);
 };

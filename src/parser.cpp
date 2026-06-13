@@ -35,6 +35,10 @@ void Parser::error_at(Token &token, const char *error_msg) {
   had_error = true;
 }
 
+void Parser::error_at_current(const char *message) {
+  error_at(current, message);
+}
+
 void Parser::error(const char *message) { error_at(previous, message); }
 
 void Parser::consume(TokenType type, const char *message) {

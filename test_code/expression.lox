@@ -8,3 +8,9 @@ if (result == 3) {
   print "It's not 3. :(";
 }
 
+
+fun hey_there(x) {
+  print "Hello!";
+}
+
+print hey_there;

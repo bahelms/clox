@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <functional>
 #include <iostream>
+#include <ranges>
 #include <sys/types.h>
 
 #include "chunk.h"
@@ -20,7 +21,7 @@ VM::VM() { stack_top = stack; }
 
 VM::~VM() {
   Object *obj = objects;
-  while (obj != nullptr) {
+  while (obj) {
     Object *next = obj->next;
     delete obj;
     obj = next;
@@ -28,24 +29,14 @@ VM::~VM() {
 }
 
 InterpretResult VM::interpret(std::string source) {
-  Compiler compiler{source, *this};
-  ObjFunction *function = compiler.compile();
+  ObjFunction *function = compile_script(source, *this);
   if (!function) {
     return InterpretResult::CompileError;
   }
 
-  enter_function(function);
-  return run();
-}
-
-CallFrame &VM::current_frame() { return frames[frame_count - 1]; }
-
-void VM::enter_function(ObjFunction *function) {
   push(Value::object(function));
-  CallFrame &frame = frames[frame_count++];
-  frame.function = function;
-  frame.ip = function->chunk->data();
-  frame.slots = stack;
+  call(function, 0);
+  return run();
 }
 
 InterpretResult VM::run() {
@@ -53,8 +44,9 @@ InterpretResult VM::run() {
 #ifdef DEBUG_TRACE_EXECUTION
     print_stack(stack, stack_top);
     CallFrame &frame = current_frame();
-    disassemble_instruction(frame.function->chunk,
-                            static_cast<int>(frame.ip - frame.chunk.data()));
+    disassemble_instruction(
+        *frame.function->chunk,
+        static_cast<int>(frame.ip - frame.function->chunk->data()));
 #endif
 
     uint8_t instr = read_byte();
@@ -193,6 +185,13 @@ InterpretResult VM::run() {
       current_frame().ip -= read_short();
       break;
     }
+    case OP_CALL: {
+      int arg_count = read_byte();
+      if (!call_value(peek(arg_count), arg_count)) {
+        return InterpretResult::RuntimeError;
+      }
+      break;
+    }
     case OP_RETURN: {
       return InterpretResult::Ok;
     }
@@ -202,6 +201,8 @@ InterpretResult VM::run() {
     }
   }
 }
+
+CallFrame &VM::current_frame() { return frames[frame_count - 1]; }
 
 uint8_t VM::read_byte() { return *current_frame().ip++; }
 
@@ -228,6 +229,33 @@ Value VM::pop() {
 Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 
 void VM::reset_stack() { stack_top = stack; }
+
+bool VM::call_value(Value callee, int arg_count) {
+  if (callee.is_function()) {
+    return call(callee.as_function(), arg_count);
+  }
+  runtime_error("Can only call functions and classes.");
+  return false;
+}
+
+bool VM::call(ObjFunction *function, int arg_count) {
+  if (arg_count != function->arity) {
+    runtime_error("Expected {} arguments but got {}.", function->arity,
+                  arg_count);
+    return false;
+  }
+
+  if (frame_count == FRAMES_MAX) {
+    runtime_error("Stack overflow.");
+    return false;
+  }
+
+  CallFrame &frame = frames[frame_count++];
+  frame.function = function;
+  frame.ip = function->chunk->data();
+  frame.slots = stack_top - arg_count - 1;
+  return true;
+}
 
 std::expected<uint8_t, const char *>
 VM::get_or_alloc_global_slot(const std::string &name) {
@@ -266,6 +294,19 @@ void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   size_t instruction = frame.ip - frame.function->chunk->data() - 1;
   int line = frame.function->chunk->get_line(instruction);
   std::cerr << std::format("[line {}] in script\n", line);
+
+  // for (int i = frame_count - 1; i >= 0; i--) {
+  for (CallFrame &frame :
+       std::span(frames).first(frame_count) | std::views::reverse) {
+    ObjFunction *function = frame.function;
+    size_t instruction = frame.ip - function->chunk->data() - 1;
+    std::print(stderr, "[line {}] in ", function->chunk->get_line(instruction));
+    if (!function->name) {
+      std::println(stderr, "script");
+    } else {
+      std::println(stderr, "{}()", function->name->chars);
+    }
+  }
   reset_stack();
 }
 
@@ -377,13 +418,13 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("returns RuntimeError when negating a non-number") {
-    suppress_stderr([&] {
+    capture_stderr([&] {
       CHECK(vm.interpret("-\"hello\";") == InterpretResult::RuntimeError);
     });
   }
 
   SUBCASE("returns RuntimeError for mixed types in addition") {
-    suppress_stderr([&] {
+    capture_stderr([&] {
       CHECK(vm.interpret("\"hello\" + 1;") == InterpretResult::RuntimeError);
     });
   }
@@ -404,7 +445,7 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("local variable is not accessible outside its scope") {
-    suppress_stderr([&] {
+    capture_stderr([&] {
       CHECK(vm.interpret("{ var x = 1; } print x;") ==
             InterpretResult::RuntimeError);
     });
@@ -454,13 +495,13 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("get undefined variable returns RuntimeError") {
-    suppress_stderr([&] {
+    capture_stderr([&] {
       CHECK(vm.interpret("print y;") == InterpretResult::RuntimeError);
     });
   }
 
   SUBCASE("set undefined variable returns RuntimeError") {
-    suppress_stderr([&] {
+    capture_stderr([&] {
       CHECK(vm.interpret("y = 1;") == InterpretResult::RuntimeError);
     });
   }
@@ -524,5 +565,21 @@ TEST_CASE("VM::interpret") {
       CHECK(vm.interpret("if (1 < 2) print \"yes\";") == InterpretResult::Ok);
     });
     CHECK(output == "yes\n");
+  }
+
+  SUBCASE("top-level function declaration compiles and runs") {
+    // mark_initialized must no-op at global scope (scope_depth == 0) rather
+    // than stamp a depth onto the reserved script slot.
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("fun f() {} print f;") == InterpretResult::Ok);
+    });
+    CHECK(output == "<fn f>\n");
+  }
+
+  SUBCASE("function declared in a local scope resolves") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("{ fun g() {} print g; }") == InterpretResult::Ok);
+    });
+    CHECK(output == "<fn g>\n");
   }
 }

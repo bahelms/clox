@@ -43,6 +43,9 @@ struct Value {
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
 
+  bool is_function() {
+    return is_object() && as_object()->type == ObjectType::Function;
+  }
   ObjFunction *as_function() const {
     return static_cast<ObjFunction *>(as_object());
   }

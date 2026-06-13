@@ -15,46 +15,46 @@
 #endif
 
 ParseRule rules[] = {
-    {&Compiler::grouping, NULL, Precedence::None},           // LeftParen
-    {NULL, NULL, Precedence::None},                          // RightParen
-    {NULL, NULL, Precedence::None},                          // LeftBrace
-    {NULL, NULL, Precedence::None},                          // RightBrace
-    {NULL, NULL, Precedence::None},                          // Comma
-    {NULL, NULL, Precedence::None},                          // Dot
-    {&Compiler::unary, &Compiler::binary, Precedence::Term}, // Minus
-    {NULL, &Compiler::binary, Precedence::Term},             // Plus
-    {NULL, NULL, Precedence::None},                          // Semicolon
-    {NULL, &Compiler::binary, Precedence::Factor},           // Slash
-    {NULL, &Compiler::binary, Precedence::Factor},           // Star
-    {&Compiler::unary, NULL, Precedence::None},              // Bang
-    {NULL, &Compiler::binary, Precedence::Equality},         // BangEqual
-    {NULL, NULL, Precedence::None},                          // Equal
-    {NULL, &Compiler::binary, Precedence::Equality},         // EqualEqual
-    {NULL, &Compiler::binary, Precedence::Comparison},       // Greater
-    {NULL, &Compiler::binary, Precedence::Comparison},       // GreaterEqual
-    {NULL, &Compiler::binary, Precedence::Comparison},       // Less
-    {NULL, &Compiler::binary, Precedence::Comparison},       // LessEqual
-    {&Compiler::variable, NULL, Precedence::None},           // Identifier
-    {&Compiler::string, NULL, Precedence::None},             // String
-    {&Compiler::number, NULL, Precedence::None},             // Number
-    {NULL, &Compiler::and_, Precedence::And},                // And
-    {NULL, NULL, Precedence::None},                          // Class
-    {NULL, NULL, Precedence::None},                          // Else
-    {&Compiler::literal, NULL, Precedence::None},            // False
-    {NULL, NULL, Precedence::None},                          // For
-    {NULL, NULL, Precedence::None},                          // Fun
-    {NULL, NULL, Precedence::None},                          // If
-    {&Compiler::literal, NULL, Precedence::None},            // Nil
-    {NULL, &Compiler::or_, Precedence::Or},                  // Or
-    {NULL, NULL, Precedence::None},                          // Print
-    {NULL, NULL, Precedence::None},                          // Return
-    {NULL, NULL, Precedence::None},                          // Super
-    {NULL, NULL, Precedence::None},                          // This
-    {&Compiler::literal, NULL, Precedence::None},            // True
-    {NULL, NULL, Precedence::None},                          // Var
-    {NULL, NULL, Precedence::None},                          // While
-    {NULL, NULL, Precedence::None},                          // Error
-    {NULL, NULL, Precedence::None},                          // EOF
+    {&Compiler::grouping, &Compiler::call, Precedence::Call}, // LeftParen
+    {NULL, NULL, Precedence::None},                           // RightParen
+    {NULL, NULL, Precedence::None},                           // LeftBrace
+    {NULL, NULL, Precedence::None},                           // RightBrace
+    {NULL, NULL, Precedence::None},                           // Comma
+    {NULL, NULL, Precedence::None},                           // Dot
+    {&Compiler::unary, &Compiler::binary, Precedence::Term},  // Minus
+    {NULL, &Compiler::binary, Precedence::Term},              // Plus
+    {NULL, NULL, Precedence::None},                           // Semicolon
+    {NULL, &Compiler::binary, Precedence::Factor},            // Slash
+    {NULL, &Compiler::binary, Precedence::Factor},            // Star
+    {&Compiler::unary, NULL, Precedence::None},               // Bang
+    {NULL, &Compiler::binary, Precedence::Equality},          // BangEqual
+    {NULL, NULL, Precedence::None},                           // Equal
+    {NULL, &Compiler::binary, Precedence::Equality},          // EqualEqual
+    {NULL, &Compiler::binary, Precedence::Comparison},        // Greater
+    {NULL, &Compiler::binary, Precedence::Comparison},        // GreaterEqual
+    {NULL, &Compiler::binary, Precedence::Comparison},        // Less
+    {NULL, &Compiler::binary, Precedence::Comparison},        // LessEqual
+    {&Compiler::variable, NULL, Precedence::None},            // Identifier
+    {&Compiler::string, NULL, Precedence::None},              // String
+    {&Compiler::number, NULL, Precedence::None},              // Number
+    {NULL, &Compiler::and_, Precedence::And},                 // And
+    {NULL, NULL, Precedence::None},                           // Class
+    {NULL, NULL, Precedence::None},                           // Else
+    {&Compiler::literal, NULL, Precedence::None},             // False
+    {NULL, NULL, Precedence::None},                           // For
+    {NULL, NULL, Precedence::None},                           // Fun
+    {NULL, NULL, Precedence::None},                           // If
+    {&Compiler::literal, NULL, Precedence::None},             // Nil
+    {NULL, &Compiler::or_, Precedence::Or},                   // Or
+    {NULL, NULL, Precedence::None},                           // Print
+    {NULL, NULL, Precedence::None},                           // Return
+    {NULL, NULL, Precedence::None},                           // Super
+    {NULL, NULL, Precedence::None},                           // This
+    {&Compiler::literal, NULL, Precedence::None},             // True
+    {NULL, NULL, Precedence::None},                           // Var
+    {NULL, NULL, Precedence::None},                           // While
+    {NULL, NULL, Precedence::None},                           // Error
+    {NULL, NULL, Precedence::None},                           // EOF
 };
 
 static ParseRule &get_rule(TokenType operator_type) {
@@ -62,12 +62,18 @@ static ParseRule &get_rule(TokenType operator_type) {
 }
 
 ObjFunction *Compiler::compile() {
-  parser.advance();
   while (!match(TokenType::Eof)) {
     declaration();
   }
   ObjFunction *function = end();
   return parser.had_error ? NULL : function;
+}
+
+ObjFunction *compile_script(std::string_view src, VM &vm) {
+  Parser parser{src};
+  parser.advance();
+  Compiler compiler{parser, vm, FunctionType::Script};
+  return compiler.compile();
 }
 
 bool Compiler::match(TokenType type) {
@@ -81,7 +87,9 @@ bool Compiler::match(TokenType type) {
 bool Compiler::check(TokenType type) { return parser.current_type() == type; }
 
 void Compiler::declaration() {
-  if (match(TokenType::Var)) {
+  if (match(TokenType::Fun)) {
+    fun_declaration();
+  } else if (match(TokenType::Var)) {
     var_declaration();
   } else {
     statement();
@@ -116,6 +124,13 @@ void Compiler::synchronize() {
 
     parser.advance();
   }
+}
+
+void Compiler::fun_declaration() {
+  uint8_t global_var_idx = parse_variable("Expect function name.");
+  mark_initialized();
+  compile_function(FunctionType::Function);
+  define_variable(global_var_idx);
 }
 
 void Compiler::var_declaration() {
@@ -191,7 +206,37 @@ void Compiler::define_variable(uint8_t global_var_idx) {
 }
 
 void Compiler::mark_initialized() {
+  if (scope_depth == 0) {
+    return;
+  }
   locals[local_count - 1].depth = scope_depth;
+}
+
+void Compiler::compile_function(FunctionType type) {
+  Compiler compiler{parser, vm, type, this};
+  compiler.function->name = vm.alloc_string(
+      std::string(parser.previous.start, parser.previous.length));
+  compiler.function_body();
+  ObjFunction *fn = compiler.end();
+  emit_bytes(OP_CONSTANT, make_constant(Value::object(fn)));
+}
+
+void Compiler::function_body() {
+  begin_scope();
+  parser.consume(TokenType::LeftParen, "Expect '(' after function name.");
+  if (!check(TokenType::RightParen)) {
+    do {
+      function->arity++;
+      if (function->arity > 255) {
+        parser.error_at_current("Can't have more than 255 parameters.");
+      }
+      uint8_t constant = parse_variable("Expect parameter name.");
+      define_variable(constant);
+    } while (match(TokenType::Comma));
+  }
+  parser.consume(TokenType::RightParen, "Expect ')' after parameters.");
+  parser.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+  block();
 }
 
 // Statements have zero stack effect. After execution of these instructions,
@@ -433,6 +478,26 @@ void Compiler::grouping(bool can_assign) {
   parser.consume(TokenType::RightParen, "Expect ')' after expression.");
 }
 
+void Compiler::call(bool can_assign) {
+  uint8_t arg_count = argument_list();
+  emit_bytes(OP_CALL, arg_count);
+}
+
+uint8_t Compiler::argument_list() {
+  uint8_t arg_count{};
+  if (!check(TokenType::RightParen)) {
+    do {
+      expression();
+      if (arg_count == 255) {
+        parser.error("Can't have more than 255 arguments.");
+      }
+      arg_count++;
+    } while (match(TokenType::Comma));
+  }
+  parser.consume(TokenType::RightParen, "Expect ')' after arguments.");
+  return arg_count;
+}
+
 void Compiler::literal(bool can_assign) {
   switch (parser.previous_type()) {
   case TokenType::False:
@@ -544,8 +609,7 @@ uint8_t Compiler::make_constant(Value value) {
 
 static Chunk compile_source(std::string_view src) {
   VM vm;
-  Compiler compiler(src, vm);
-  return *compiler.compile()->chunk;
+  return *compile_script(src, vm)->chunk;
 }
 
 TEST_CASE("Compiler: number literal") {
@@ -652,8 +716,7 @@ TEST_CASE("Compiler: comparison operators emit single opcodes") {
 
 TEST_CASE("Compiler: compile returns null on error") {
   VM vm;
-  Compiler compiler("@", vm);
-  suppress_stderr([&] { CHECK(compiler.compile() == nullptr); });
+  suppress_stderr([&] { CHECK(compile_script("@", vm) == nullptr); });
 }
 
 TEST_CASE("Compiler: local variable declaration leaves value on stack") {
@@ -668,11 +731,9 @@ TEST_CASE("Compiler: local variable declaration leaves value on stack") {
 
 TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
   auto chunk = compile_source("{ var x = 1; print x; }");
-  // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 1; slot 0 is the script)
-  // [2] OP_GET_LOCAL [3] 1         <- read x
-  // [4] OP_PRINT
-  // [5] OP_POPN [6] 1
-  // [7] OP_RETURN
+  // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 1; slot 0 is the
+  // script) [2] OP_GET_LOCAL [3] 1         <- read x [4] OP_PRINT [5] OP_POPN
+  // [6] 1 [7] OP_RETURN
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk[2] == OP_GET_LOCAL);
   CHECK(chunk[3] == 1);
@@ -684,12 +745,10 @@ TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
 
 TEST_CASE("Compiler: local variable set emits OP_SET_LOCAL") {
   auto chunk = compile_source("{ var x = 1; x = 2; }");
-  // [0] OP_CONSTANT [1] idx(1.0)   <- initializer (slot 1; slot 0 is the script)
-  // [2] OP_CONSTANT [3] idx(2.0)   <- rhs of assignment
-  // [4] OP_SET_LOCAL [5] 1         <- assign x
-  // [6] OP_POP                     <- expression_statement discards result
-  // [7] OP_POPN [8] 1
-  // [9] OP_RETURN
+  // [0] OP_CONSTANT [1] idx(1.0)   <- initializer (slot 1; slot 0 is the
+  // script) [2] OP_CONSTANT [3] idx(2.0)   <- rhs of assignment [4]
+  // OP_SET_LOCAL [5] 1         <- assign x [6] OP_POP                     <-
+  // expression_statement discards result [7] OP_POPN [8] 1 [9] OP_RETURN
   CHECK(chunk[4] == OP_SET_LOCAL);
   CHECK(chunk[5] == 1);
   CHECK(chunk[6] == OP_POP);
@@ -751,10 +810,8 @@ TEST_CASE("Compiler: global variable slot assignment") {
 
   SUBCASE("same variable name reuses the same slot across interpret calls") {
     VM vm;
-    Compiler c1("var a = 1;", vm);
-    Chunk chunk1 = *c1.compile()->chunk;
-    Compiler c2("var a = 2;", vm);
-    Chunk chunk2 = *c2.compile()->chunk;
+    Chunk chunk1 = *compile_script("var a = 1;", vm)->chunk;
+    Chunk chunk2 = *compile_script("var a = 2;", vm)->chunk;
     CHECK(chunk1[3] == 0);
     CHECK(chunk2[3] == 0);
   }
@@ -923,25 +980,16 @@ TEST_CASE("Compiler: for statement") {
   SUBCASE(
       "full for loop: var init, condition, increment emits correct structure") {
     auto chunk = compile_source("for (var i = 0; i < 3; i = i + 1) print i;");
-    // 0:  OP_CONSTANT  0 (const idx, 0.0)  <- var i = 0 (slot 1; slot 0 is script)
-    // 2:  OP_GET_LOCAL  1 (slot)           <- condition: load i
-    // 4:  OP_CONSTANT  1 (const idx, 3.0)
-    // 6:  OP_LESS
-    // 7:  OP_JUMP_IF_FALSE  0  21  (→ pos 31, exit pop)
-    // 10: OP_POP
-    // 11: OP_JUMP  0  11  (→ pos 25, body)
-    // 14: OP_GET_LOCAL  1 (slot)    <- increment: load i
-    // 16: OP_CONSTANT  2 (const idx, 1.0)
-    // 18: OP_ADD
-    // 19: OP_SET_LOCAL  1 (slot)    <- store into i
-    // 21: OP_POP
-    // 22: OP_LOOP  0  23  (→ back to pos 2, condition)
-    // 25: OP_GET_LOCAL  1 (slot)    <- body: load i
-    // 27: OP_PRINT
-    // 28: OP_LOOP  0  17  (→ back to pos 14, increment)
-    // 31: OP_POP                    <- exit: pop condition value
-    // 32: OP_POPN  1 (count)        <- pop i
-    // 34: OP_RETURN
+    // 0:  OP_CONSTANT  0 (const idx, 0.0)  <- var i = 0 (slot 1; slot 0 is
+    // script) 2:  OP_GET_LOCAL  1 (slot)           <- condition: load i 4:
+    // OP_CONSTANT  1 (const idx, 3.0) 6:  OP_LESS 7:  OP_JUMP_IF_FALSE  0  21
+    // (→ pos 31, exit pop) 10: OP_POP 11: OP_JUMP  0  11  (→ pos 25, body) 14:
+    // OP_GET_LOCAL  1 (slot)    <- increment: load i 16: OP_CONSTANT  2 (const
+    // idx, 1.0) 18: OP_ADD 19: OP_SET_LOCAL  1 (slot)    <- store into i 21:
+    // OP_POP 22: OP_LOOP  0  23  (→ back to pos 2, condition) 25: OP_GET_LOCAL
+    // 1 (slot)    <- body: load i 27: OP_PRINT 28: OP_LOOP  0  17  (→ back to
+    // pos 14, increment) 31: OP_POP                    <- exit: pop condition
+    // value 32: OP_POPN  1 (count)        <- pop i 34: OP_RETURN
     CHECK(chunk[0] == OP_CONSTANT);
     CHECK(chunk[0] == 0);
     CHECK(chunk.get_constant(chunk[1]).as_number() == 0.0);
@@ -967,5 +1015,60 @@ TEST_CASE("Compiler: for statement") {
     CHECK(chunk[32] == OP_POPN);
     CHECK(chunk[33] == 1);
     CHECK(chunk[34] == OP_RETURN);
+  }
+}
+
+TEST_CASE(
+    "Compiler: top-level program compiles to a nameless <script> function") {
+  VM vm;
+  ObjFunction *script = compile_script("1 + 2;", vm);
+  REQUIRE(script != nullptr);
+  CHECK(script->name == nullptr);
+  CHECK(script->arity == 0);
+}
+
+TEST_CASE("Compiler: function declaration") {
+  // Function objects live in the VM; keep it alive while inspecting them.
+  SUBCASE(
+      "emits OP_CONSTANT <fn> then OP_DEFINE_GLOBAL in the enclosing chunk") {
+    VM vm;
+    Chunk &chunk = *compile_script("fun f() {}", vm)->chunk;
+    // [0] OP_CONSTANT [1] fn_idx [2] OP_DEFINE_GLOBAL [3] slot [4] OP_RETURN
+    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[2] == OP_DEFINE_GLOBAL);
+    CHECK(chunk[4] == OP_RETURN);
+
+    ObjFunction *f = chunk.get_constant(chunk[1]).as_function();
+    CHECK(f->name->chars == "f");
+    CHECK(f->arity == 0);
+    CHECK((*f->chunk)[0] == OP_RETURN); // empty body is just a return
+  }
+
+  SUBCASE("parameters set arity and become locals") {
+    VM vm;
+    Chunk &chunk = *compile_script("fun f(a, b) { print a; }", vm)->chunk;
+    ObjFunction *f = chunk.get_constant(chunk[1]).as_function();
+    CHECK(f->arity == 2);
+    // Parameter `a` is local slot 1 (slot 0 is the reserved function slot),
+    // read via OP_GET_LOCAL rather than OP_GET_GLOBAL.
+    Chunk &body = *f->chunk;
+    CHECK(body[0] == OP_GET_LOCAL);
+    CHECK(body[1] == 1);
+    CHECK(body[2] == OP_PRINT);
+    CHECK(body[3] == OP_RETURN);
+  }
+
+  SUBCASE("nested function compiles without rewinding the cursor") {
+    // Regression guard: a fresh sub-compiler must share the parser cursor so
+    // the inner function is parsed in place, not from the start of source.
+    VM vm;
+    Chunk &chunk = *compile_script("fun outer() { fun inner() {} }", vm)->chunk;
+    ObjFunction *outer = chunk.get_constant(chunk[1]).as_function();
+    CHECK(outer->name->chars == "outer");
+    // `inner` is a local inside outer, emitted as a constant in outer's chunk.
+    Chunk &outer_body = *outer->chunk;
+    CHECK(outer_body[0] == OP_CONSTANT);
+    ObjFunction *inner = outer_body.get_constant(outer_body[1]).as_function();
+    CHECK(inner->name->chars == "inner");
   }
 }
