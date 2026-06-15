@@ -80,6 +80,7 @@ class Compiler {
   void print_statement();
   void for_statement();
   void if_statement();
+  void return_statement();
   void while_statement();
   void expression_statement();
   void named_variable(const Token &name, bool can_assign);

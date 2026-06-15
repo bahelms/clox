@@ -193,7 +193,15 @@ InterpretResult VM::run() {
       break;
     }
     case OP_RETURN: {
-      return InterpretResult::Ok;
+      Value result = pop();
+      frame_count--;
+      if (frame_count == 0) {
+        pop();
+        return InterpretResult::Ok;
+      };
+      stack_top = frames[frame_count].slots;
+      push(result);
+      break;
     }
     default:
       std::cerr << "Unknown opcode: " << static_cast<int>(instr) << '\n';
@@ -581,5 +589,13 @@ TEST_CASE("VM::interpret") {
       CHECK(vm.interpret("{ fun g() {} print g; }") == InterpretResult::Ok);
     });
     CHECK(output == "<fn g>\n");
+  }
+
+  SUBCASE("calling a function and using its implicit nil return value") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("fun a() { print \"In A\"; } print a();") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "In A\nnil\n");
   }
 }

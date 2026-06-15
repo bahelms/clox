@@ -1,0 +1,8 @@
+fun a() {
+  print "In A";
+  return 3;
+}
+
+print a();
+return "What";
+a();

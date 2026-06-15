@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <print>
 #include <ranges>
 #include <sys/types.h>
 
@@ -66,7 +67,7 @@ ObjFunction *Compiler::compile() {
     declaration();
   }
   ObjFunction *function = end();
-  return parser.had_error ? NULL : function;
+  return parser.had_error ? nullptr : function;
 }
 
 ObjFunction *compile_script(std::string_view src, VM &vm) {
@@ -248,6 +249,8 @@ void Compiler::statement() {
     for_statement();
   } else if (match(TokenType::If)) {
     if_statement();
+  } else if (match(TokenType::Return)) {
+    return_statement();
   } else if (match(TokenType::While)) {
     while_statement();
   } else if (match(TokenType::LeftBrace)) {
@@ -321,6 +324,20 @@ void Compiler::if_statement() {
     statement();
   }
   patch_jump(else_jump);
+}
+
+void Compiler::return_statement() {
+  if (type == FunctionType::Script) {
+    parser.error("Can't return from top-level code.");
+  }
+
+  if (match(TokenType::Semicolon)) {
+    emit_return();
+  } else {
+    expression();
+    parser.consume(TokenType::Semicolon, "Expect ';' after return value.");
+    emit_byte(OP_RETURN);
+  }
 }
 
 int Compiler::emit_jump(OpCode op) {
@@ -583,7 +600,10 @@ ObjFunction *Compiler::end() {
   return function;
 }
 
-void Compiler::emit_return() { emit_byte(OP_RETURN); }
+void Compiler::emit_return() {
+  emit_byte(OP_NIL);
+  emit_byte(OP_RETURN);
+}
 
 void Compiler::emit_byte(uint8_t byte) {
   current_chunk()->write(byte, parser.previous.line);
@@ -617,7 +637,8 @@ TEST_CASE("Compiler: number literal") {
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk.get_constant(chunk[1]).as_number() == 1.5);
   CHECK(chunk[2] == OP_POP);
-  CHECK(chunk[3] == OP_RETURN);
+  CHECK(chunk[3] == OP_NIL);
+  CHECK(chunk[4] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: negation") {
@@ -626,7 +647,8 @@ TEST_CASE("Compiler: negation") {
   CHECK(chunk.get_constant(chunk[1]).as_number() == 2.0);
   CHECK(chunk[2] == OP_NEGATE);
   CHECK(chunk[3] == OP_POP);
-  CHECK(chunk[4] == OP_RETURN);
+  CHECK(chunk[4] == OP_NIL);
+  CHECK(chunk[5] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: binary operations") {
@@ -636,7 +658,8 @@ TEST_CASE("Compiler: binary operations") {
     CHECK(chunk[2] == OP_CONSTANT);
     CHECK(chunk[4] == OP_ADD);
     CHECK(chunk[5] == OP_POP);
-    CHECK(chunk[6] == OP_RETURN);
+    CHECK(chunk[6] == OP_NIL);
+    CHECK(chunk[7] == OP_RETURN);
   }
   SUBCASE("subtraction") {
     auto chunk = compile_source("5 - 3;");
@@ -663,7 +686,8 @@ TEST_CASE("Compiler: grouping") {
   CHECK(chunk.get_constant(chunk[6]).as_number() == 2.0);
   CHECK(chunk[7] == OP_ADD);
   CHECK(chunk[8] == OP_POP);
-  CHECK(chunk[9] == OP_RETURN);
+  CHECK(chunk[9] == OP_NIL);
+  CHECK(chunk[10] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: operator precedence") {
@@ -677,19 +701,22 @@ TEST_CASE("Compiler: boolean and nil literals") {
     auto chunk = compile_source("false;");
     CHECK(chunk[0] == OP_FALSE);
     CHECK(chunk[1] == OP_POP);
-    CHECK(chunk[2] == OP_RETURN);
+    CHECK(chunk[2] == OP_NIL);
+    CHECK(chunk[3] == OP_RETURN);
   }
   SUBCASE("true") {
     auto chunk = compile_source("true;");
     CHECK(chunk[0] == OP_TRUE);
     CHECK(chunk[1] == OP_POP);
-    CHECK(chunk[2] == OP_RETURN);
+    CHECK(chunk[2] == OP_NIL);
+    CHECK(chunk[3] == OP_RETURN);
   }
   SUBCASE("nil") {
     auto chunk = compile_source("nil;");
     CHECK(chunk[0] == OP_NIL);
     CHECK(chunk[1] == OP_POP);
-    CHECK(chunk[2] == OP_RETURN);
+    CHECK(chunk[2] == OP_NIL);
+    CHECK(chunk[3] == OP_RETURN);
   }
 }
 
@@ -698,25 +725,33 @@ TEST_CASE("Compiler: comparison operators emit single opcodes") {
     auto chunk = compile_source("1 != 2;");
     CHECK(chunk[4] == OP_NOT_EQUAL);
     CHECK(chunk[5] == OP_POP);
-    CHECK(chunk[6] == OP_RETURN);
+    CHECK(chunk[6] == OP_NIL);
+    CHECK(chunk[7] == OP_RETURN);
   }
   SUBCASE(">=") {
     auto chunk = compile_source("1 >= 2;");
     CHECK(chunk[4] == OP_GREATER_EQUAL);
     CHECK(chunk[5] == OP_POP);
-    CHECK(chunk[6] == OP_RETURN);
+    CHECK(chunk[6] == OP_NIL);
+    CHECK(chunk[7] == OP_RETURN);
   }
   SUBCASE("<=") {
     auto chunk = compile_source("1 <= 2;");
     CHECK(chunk[4] == OP_LESS_EQUAL);
     CHECK(chunk[5] == OP_POP);
-    CHECK(chunk[6] == OP_RETURN);
+    CHECK(chunk[6] == OP_NIL);
+    CHECK(chunk[7] == OP_RETURN);
   }
 }
 
 TEST_CASE("Compiler: compile returns null on error") {
   VM vm;
   suppress_stderr([&] { CHECK(compile_script("@", vm) == nullptr); });
+}
+
+TEST_CASE("Compiler: return from top-level code is an error") {
+  VM vm;
+  suppress_stderr([&] { CHECK(compile_script("return 1;", vm) == nullptr); });
 }
 
 TEST_CASE("Compiler: local variable declaration leaves value on stack") {
@@ -726,21 +761,23 @@ TEST_CASE("Compiler: local variable declaration leaves value on stack") {
   CHECK(chunk.get_constant(chunk[1]).as_number() == 1.0);
   CHECK(chunk[2] == OP_POPN);
   CHECK(chunk[3] == 1);
-  CHECK(chunk[4] == OP_RETURN);
+  CHECK(chunk[4] == OP_NIL);
+  CHECK(chunk[5] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: local variable get emits OP_GET_LOCAL") {
   auto chunk = compile_source("{ var x = 1; print x; }");
   // [0] OP_CONSTANT [1] const_idx  <- initializer (slot 1; slot 0 is the
   // script) [2] OP_GET_LOCAL [3] 1         <- read x [4] OP_PRINT [5] OP_POPN
-  // [6] 1 [7] OP_RETURN
+  // [6] 1 [7] OP_NIL [8] OP_RETURN
   CHECK(chunk[0] == OP_CONSTANT);
   CHECK(chunk[2] == OP_GET_LOCAL);
   CHECK(chunk[3] == 1);
   CHECK(chunk[4] == OP_PRINT);
   CHECK(chunk[5] == OP_POPN);
   CHECK(chunk[6] == 1);
-  CHECK(chunk[7] == OP_RETURN);
+  CHECK(chunk[7] == OP_NIL);
+  CHECK(chunk[8] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: local variable set emits OP_SET_LOCAL") {
@@ -824,7 +861,8 @@ TEST_CASE("Compiler: and operator") {
   // 4:  OP_POP
   // 5:  OP_FALSE
   // 6:  OP_POP   (expression_statement)
-  // 7:  OP_RETURN
+  // 7:  OP_NIL
+  // 8:  OP_RETURN
   CHECK(chunk[0] == OP_TRUE);
   CHECK(chunk[1] == OP_JUMP_IF_FALSE);
   CHECK(chunk[2] == 0);
@@ -832,7 +870,8 @@ TEST_CASE("Compiler: and operator") {
   CHECK(chunk[4] == OP_POP);
   CHECK(chunk[5] == OP_FALSE);
   CHECK(chunk[6] == OP_POP);
-  CHECK(chunk[7] == OP_RETURN);
+  CHECK(chunk[7] == OP_NIL);
+  CHECK(chunk[8] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: or operator") {
@@ -843,7 +882,8 @@ TEST_CASE("Compiler: or operator") {
   // 7:  OP_POP
   // 8:  OP_FALSE
   // 9:  OP_POP   (expression_statement)
-  // 10: OP_RETURN
+  // 10: OP_NIL
+  // 11: OP_RETURN
   CHECK(chunk[0] == OP_TRUE);
   CHECK(chunk[1] == OP_JUMP_IF_FALSE);
   CHECK(chunk[2] == 0);
@@ -854,7 +894,8 @@ TEST_CASE("Compiler: or operator") {
   CHECK(chunk[7] == OP_POP);
   CHECK(chunk[8] == OP_FALSE);
   CHECK(chunk[9] == OP_POP);
-  CHECK(chunk[10] == OP_RETURN);
+  CHECK(chunk[10] == OP_NIL);
+  CHECK(chunk[11] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: while statement") {
@@ -866,7 +907,8 @@ TEST_CASE("Compiler: while statement") {
   // 7:  OP_PRINT
   // 8:  OP_LOOP  9: 0  10: 11          (→ back to pos 0)
   // 11: OP_POP
-  // 12: OP_RETURN
+  // 12: OP_NIL
+  // 13: OP_RETURN
   CHECK(chunk[0] == OP_TRUE);
   CHECK(chunk[1] == OP_JUMP_IF_FALSE);
   CHECK(chunk[2] == 0);
@@ -878,7 +920,8 @@ TEST_CASE("Compiler: while statement") {
   CHECK(chunk[9] == 0);
   CHECK(chunk[10] == 11);
   CHECK(chunk[11] == OP_POP);
-  CHECK(chunk[12] == OP_RETURN);
+  CHECK(chunk[12] == OP_NIL);
+  CHECK(chunk[13] == OP_RETURN);
 }
 
 TEST_CASE("Compiler: if statement") {
@@ -891,7 +934,8 @@ TEST_CASE("Compiler: if statement") {
     // 7:  OP_PRINT
     // 8:  OP_JUMP  9: 0  10: 1  (→ pos 12)
     // 11: OP_POP
-    // 12: OP_RETURN
+    // 12: OP_NIL
+    // 13: OP_RETURN
     CHECK(chunk[0] == OP_TRUE);
     CHECK(chunk[1] == OP_JUMP_IF_FALSE);
     CHECK(chunk[2] == 0);
@@ -903,7 +947,8 @@ TEST_CASE("Compiler: if statement") {
     CHECK(chunk[9] == 0);
     CHECK(chunk[10] == 1);
     CHECK(chunk[11] == OP_POP);
-    CHECK(chunk[12] == OP_RETURN);
+    CHECK(chunk[12] == OP_NIL);
+    CHECK(chunk[13] == OP_RETURN);
   }
   SUBCASE("if-else emits correct jump offsets around both branches") {
     auto chunk = compile_source("if (true) print \"yes\"; else print \"no\";");
@@ -916,7 +961,8 @@ TEST_CASE("Compiler: if statement") {
     // 11: OP_POP
     // 12: OP_CONSTANT  13: 1  ("no")
     // 14: OP_PRINT
-    // 15: OP_RETURN
+    // 15: OP_NIL
+    // 16: OP_RETURN
     CHECK(chunk[0] == OP_TRUE);
     CHECK(chunk[1] == OP_JUMP_IF_FALSE);
     CHECK(chunk[2] == 0);
@@ -928,7 +974,8 @@ TEST_CASE("Compiler: if statement") {
     CHECK(chunk[10] == 4);
     CHECK(chunk[11] == OP_POP);
     CHECK(chunk[14] == OP_PRINT);
-    CHECK(chunk[15] == OP_RETURN);
+    CHECK(chunk[15] == OP_NIL);
+    CHECK(chunk[16] == OP_RETURN);
   }
 }
 
@@ -939,7 +986,8 @@ TEST_CASE("Compiler: for statement") {
     // 2:  OP_PRINT
     // 3:  OP_LOOP  0  6  (→ back to pos 0)
     // 6:  OP_POPN  0 (count)
-    // 8:  OP_RETURN
+    // 8:  OP_NIL
+    // 9:  OP_RETURN
     CHECK(chunk[0] == OP_CONSTANT);
     CHECK(chunk[2] == OP_PRINT);
     CHECK(chunk[3] == OP_LOOP);
@@ -947,7 +995,8 @@ TEST_CASE("Compiler: for statement") {
     CHECK(chunk[5] == 6);
     CHECK(chunk[6] == OP_POPN);
     CHECK(chunk[7] == 0);
-    CHECK(chunk[8] == OP_RETURN);
+    CHECK(chunk[8] == OP_NIL);
+    CHECK(chunk[9] == OP_RETURN);
   }
 
   SUBCASE("condition-only for emits JUMP_IF_FALSE around body and exit pop") {
@@ -960,7 +1009,8 @@ TEST_CASE("Compiler: for statement") {
     // 8:  OP_LOOP  0  11  (→ back to pos 0)
     // 11: OP_POP
     // 12: OP_POPN  0 (count)
-    // 14: OP_RETURN
+    // 14: OP_NIL
+    // 15: OP_RETURN
     CHECK(chunk[0] == OP_FALSE);
     CHECK(chunk[1] == OP_JUMP_IF_FALSE);
     CHECK(chunk[2] == 0);
@@ -974,7 +1024,8 @@ TEST_CASE("Compiler: for statement") {
     CHECK(chunk[11] == OP_POP);
     CHECK(chunk[12] == OP_POPN);
     CHECK(chunk[13] == 0);
-    CHECK(chunk[14] == OP_RETURN);
+    CHECK(chunk[14] == OP_NIL);
+    CHECK(chunk[15] == OP_RETURN);
   }
 
   SUBCASE(
@@ -989,7 +1040,7 @@ TEST_CASE("Compiler: for statement") {
     // OP_POP 22: OP_LOOP  0  23  (→ back to pos 2, condition) 25: OP_GET_LOCAL
     // 1 (slot)    <- body: load i 27: OP_PRINT 28: OP_LOOP  0  17  (→ back to
     // pos 14, increment) 31: OP_POP                    <- exit: pop condition
-    // value 32: OP_POPN  1 (count)        <- pop i 34: OP_RETURN
+    // value 32: OP_POPN  1 (count)        <- pop i 34: OP_NIL 35: OP_RETURN
     CHECK(chunk[0] == OP_CONSTANT);
     CHECK(chunk[0] == 0);
     CHECK(chunk.get_constant(chunk[1]).as_number() == 0.0);
@@ -1014,7 +1065,8 @@ TEST_CASE("Compiler: for statement") {
     CHECK(chunk[31] == OP_POP);
     CHECK(chunk[32] == OP_POPN);
     CHECK(chunk[33] == 1);
-    CHECK(chunk[34] == OP_RETURN);
+    CHECK(chunk[34] == OP_NIL);
+    CHECK(chunk[35] == OP_RETURN);
   }
 }
 
@@ -1033,15 +1085,19 @@ TEST_CASE("Compiler: function declaration") {
       "emits OP_CONSTANT <fn> then OP_DEFINE_GLOBAL in the enclosing chunk") {
     VM vm;
     Chunk &chunk = *compile_script("fun f() {}", vm)->chunk;
-    // [0] OP_CONSTANT [1] fn_idx [2] OP_DEFINE_GLOBAL [3] slot [4] OP_RETURN
+    // [0] OP_CONSTANT [1] fn_idx [2] OP_DEFINE_GLOBAL [3] slot [4] OP_NIL [5]
+    // OP_RETURN
     CHECK(chunk[0] == OP_CONSTANT);
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
-    CHECK(chunk[4] == OP_RETURN);
+    CHECK(chunk[4] == OP_NIL);
+    CHECK(chunk[5] == OP_RETURN);
 
     ObjFunction *f = chunk.get_constant(chunk[1]).as_function();
     CHECK(f->name->chars == "f");
     CHECK(f->arity == 0);
-    CHECK((*f->chunk)[0] == OP_RETURN); // empty body is just a return
+    // empty body is an implicit `return nil`
+    CHECK((*f->chunk)[0] == OP_NIL);
+    CHECK((*f->chunk)[1] == OP_RETURN);
   }
 
   SUBCASE("parameters set arity and become locals") {
@@ -1055,7 +1111,8 @@ TEST_CASE("Compiler: function declaration") {
     CHECK(body[0] == OP_GET_LOCAL);
     CHECK(body[1] == 1);
     CHECK(body[2] == OP_PRINT);
-    CHECK(body[3] == OP_RETURN);
+    CHECK(body[3] == OP_NIL);
+    CHECK(body[4] == OP_RETURN);
   }
 
   SUBCASE("nested function compiles without rewinding the cursor") {
