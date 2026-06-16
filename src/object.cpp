@@ -7,6 +7,8 @@
 #include "test_utils.h"
 #include "value.h"
 
+// This is here since the header only has a forward declaration of Chunk.
+// Actually using it is an implementation.
 ObjFunction::ObjFunction() : Object(ObjectType::Function), chunk(new Chunk()) {}
 
 void print_object(const Value &value) {
@@ -14,13 +16,17 @@ void print_object(const Value &value) {
   case ObjectType::String:
     std::cout << value.as_string()->chars;
     break;
-  case ObjectType::Function:
+  case ObjectType::Function: {
     ObjFunction *fn = value.as_function();
     if (!fn->name) {
       std::print("<script>");
       return;
     }
     std::print("<fn {}>", value.as_function()->name->chars);
+    break;
+  }
+  case ObjectType::Native:
+    std::print("<native fn>");
     break;
   }
 }

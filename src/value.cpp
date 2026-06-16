@@ -29,6 +29,8 @@ bool values_equal(const Value a, const Value b) {
       return a.as_string()->chars == b.as_string()->chars;
     case ObjectType::Function:
       return obj_a == obj_b;
+    case ObjectType::Native:
+      return obj_a == obj_b;
     }
   }
   case ValueType::Nil:

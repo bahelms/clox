@@ -4,7 +4,7 @@
 struct Value;
 class Chunk;
 
-enum class ObjectType { String, Function };
+enum class ObjectType { String, Function, Native };
 
 class Object {
 public:
@@ -29,6 +29,14 @@ public:
   Chunk *chunk{};
 
   ObjFunction();
+};
+
+using NativeFn = Value (*)(int arg_count, Value *args);
+
+struct ObjNative : public Object {
+  NativeFn function{};
+
+  ObjNative(NativeFn fn) : Object(ObjectType::Native), function(fn) {}
 };
 
 void print_object(const Value &value);

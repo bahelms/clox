@@ -35,6 +35,10 @@ struct Value {
     return {ValueType::Object, {.object = obj_func}};
   }
 
+  static Value object(ObjNative *obj_native) {
+    return {ValueType::Object, {.object = obj_native}};
+  }
+
   Object *as_object() const { return as.object; }
   bool is_object() { return type == ValueType::Object; }
 
@@ -49,6 +53,11 @@ struct Value {
   ObjFunction *as_function() const {
     return static_cast<ObjFunction *>(as_object());
   }
+
+  bool is_native() {
+    return is_object() && as_object()->type == ObjectType::Native;
+  }
+  ObjNative *as_native() const { return static_cast<ObjNative *>(as_object()); }
 
   const bool operator==(const Value &other_value) const {
     return values_equal(*this, other_value);

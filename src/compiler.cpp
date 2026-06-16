@@ -831,26 +831,26 @@ TEST_CASE("Compiler: global variable assignment emits OP_SET_GLOBAL") {
 }
 
 TEST_CASE("Compiler: global variable slot assignment") {
-  SUBCASE("first global gets slot 0") {
+  SUBCASE("first user global gets slot 1") {
     auto chunk = compile_source("var x = 1;");
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
-    CHECK(chunk[3] == 0);
+    CHECK(chunk[3] == 1);
   }
 
-  SUBCASE("second distinct global gets slot 1") {
+  SUBCASE("second distinct global gets slot 2") {
     auto chunk = compile_source("var x = 1; var y = 2;");
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
-    CHECK(chunk[3] == 0);
+    CHECK(chunk[3] == 1);
     CHECK(chunk[6] == OP_DEFINE_GLOBAL);
-    CHECK(chunk[7] == 1);
+    CHECK(chunk[7] == 2);
   }
 
   SUBCASE("same variable name reuses the same slot across interpret calls") {
     VM vm;
     Chunk chunk1 = *compile_script("var a = 1;", vm)->chunk;
     Chunk chunk2 = *compile_script("var a = 2;", vm)->chunk;
-    CHECK(chunk1[3] == 0);
-    CHECK(chunk2[3] == 0);
+    CHECK(chunk1[3] == 1);
+    CHECK(chunk2[3] == 1);
   }
 }
 

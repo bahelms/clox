@@ -1,5 +1,6 @@
 #include <cstdarg>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <iostream>
 #include <ranges>
@@ -17,7 +18,10 @@
 #include "debug.h"
 #endif
 
-VM::VM() { stack_top = stack; }
+VM::VM() {
+  stack_top = stack;
+  define_native("clock", clock_native);
+}
 
 VM::~VM() {
   Object *obj = objects;
@@ -241,6 +245,12 @@ void VM::reset_stack() { stack_top = stack; }
 bool VM::call_value(Value callee, int arg_count) {
   if (callee.is_function()) {
     return call(callee.as_function(), arg_count);
+  } else if (callee.is_native()) {
+    NativeFn native_fn = callee.as_native()->function;
+    Value result = native_fn(arg_count, stack_top - arg_count);
+    stack_top -= arg_count + 1;
+    push(result);
+    return true;
   }
   runtime_error("Can only call functions and classes.");
   return false;
@@ -294,6 +304,13 @@ ObjString *VM::alloc_string(std::string s) {
   return obj;
 }
 
+ObjNative *VM::alloc_native(NativeFn function) {
+  auto *obj = new ObjNative(function);
+  obj->next = objects;
+  objects = obj;
+  return obj;
+}
+
 template <typename... Args>
 void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   std::cerr << std::format(fmt, std::forward<Args>(args)...) << '\n';
@@ -303,7 +320,6 @@ void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   int line = frame.function->chunk->get_line(instruction);
   std::cerr << std::format("[line {}] in script\n", line);
 
-  // for (int i = frame_count - 1; i >= 0; i--) {
   for (CallFrame &frame :
        std::span(frames).first(frame_count) | std::views::reverse) {
     ObjFunction *function = frame.function;
@@ -318,6 +334,12 @@ void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   reset_stack();
 }
 
+void VM::define_native(const char *name, NativeFn function) {
+  uint8_t slot = get_or_alloc_global_slot(name).value();
+  globals[slot] = Value::object(alloc_native(function));
+  globals_defined[slot] = true;
+}
+
 template <typename ValueBuilder, typename Op>
 InterpretResult VM::binary_op(ValueBuilder builder, Op op) {
   if (!peek(0).is_number() || !peek(1).is_number()) {
@@ -329,6 +351,10 @@ InterpretResult VM::binary_op(ValueBuilder builder, Op op) {
   double a = pop().as_number();
   push(builder(op(a, b)));
   return InterpretResult::Ok;
+}
+
+Value clock_native(int arg_count, Value *args) {
+  return Value::number((double)clock() / CLOCKS_PER_SEC);
 }
 
 TEST_CASE("VM::alloc_string") {

@@ -55,12 +55,16 @@ class VM {
 
   template <typename... Args>
   void runtime_error(std::format_string<Args...> fmt, Args &&...args);
+  void define_native(const char *name, NativeFn function);
 
 public:
   VM();
   ~VM();
   InterpretResult interpret(std::string source);
   ObjString *alloc_string(std::string s);
+  ObjNative *alloc_native(NativeFn function);
   std::expected<uint8_t, const char *>
   get_or_alloc_global_slot(const std::string &name);
 };
+
+Value clock_native(int arg_count, Value *args);
