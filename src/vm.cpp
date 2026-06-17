@@ -20,7 +20,7 @@
 
 VM::VM() {
   stack_top = stack;
-  define_native("clock", clock_native);
+  define_native("clock", clock_native, 0);
 }
 
 VM::~VM() {
@@ -277,8 +277,13 @@ bool VM::call_value(Value callee, int arg_count) {
   if (callee.is_function()) {
     return call(callee.as_function(), arg_count);
   } else if (callee.is_native()) {
-    NativeFn native_fn = callee.as_native()->function;
-    Value result = native_fn(arg_count, stack_top - arg_count);
+    ObjNative *native = callee.as_native();
+    if (arg_count != native->arity) {
+      runtime_error("Expected {} arguments but got {}.", native->arity,
+                    arg_count);
+      return false;
+    }
+    Value result = native->function(arg_count, stack_top - arg_count);
     stack_top -= arg_count + 1;
     push(result);
     return true;
@@ -335,8 +340,8 @@ ObjString *VM::alloc_string(std::string s) {
   return obj;
 }
 
-ObjNative *VM::alloc_native(NativeFn function) {
-  auto *obj = new ObjNative(function);
+ObjNative *VM::alloc_native(NativeFn function, int arity) {
+  auto *obj = new ObjNative(function, arity);
   obj->next = objects;
   objects = obj;
   return obj;
@@ -365,9 +370,9 @@ void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   reset_stack();
 }
 
-void VM::define_native(const char *name, NativeFn function) {
+void VM::define_native(const char *name, NativeFn function, int arity) {
   uint8_t slot = get_or_alloc_global_slot(name).value();
-  globals[slot] = Value::object(alloc_native(function));
+  globals[slot] = Value::object(alloc_native(function, arity));
   globals_defined[slot] = true;
 }
 
@@ -662,6 +667,12 @@ TEST_CASE("VM::interpret") {
             InterpretResult::Ok);
     });
     CHECK(output == "6765\n");
+  }
+
+  SUBCASE("calling a native function with the wrong arity is a runtime error") {
+    capture_stderr([&] {
+      CHECK(vm.interpret("clock(1);") == InterpretResult::RuntimeError);
+    });
   }
 
   SUBCASE("comparison with non-number operand is a runtime error") {

@@ -35,8 +35,10 @@ using NativeFn = Value (*)(int arg_count, Value *args);
 
 struct ObjNative : public Object {
   NativeFn function{};
+  int arity{};
 
-  ObjNative(NativeFn fn) : Object(ObjectType::Native), function(fn) {}
+  ObjNative(NativeFn fn, int arity)
+      : Object(ObjectType::Native), function(fn), arity(arity) {}
 };
 
 void print_object(const Value &value);
