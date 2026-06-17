@@ -42,11 +42,7 @@ class VM {
   void push(Value value);
   Value pop();
   Value peek(int distance);
-  CallFrame &current_frame();
   void reset_stack();
-  uint8_t read_byte();
-  uint16_t read_short();
-  Value read_constant();
   bool call_value(Value callee, int arg_count);
   bool call(ObjFunction *function, int arg_count);
 

@@ -44,13 +44,24 @@ InterpretResult VM::interpret(std::string source) {
 }
 
 InterpretResult VM::run() {
+  CallFrame *frame = &frames[frame_count - 1];
+  const uint8_t *ip = frame->ip;
+
+  auto read_byte = [&ip]() -> uint8_t { return *ip++; };
+  auto read_short = [&ip]() -> uint16_t {
+    ip += 2;
+    return static_cast<uint16_t>(ip[-2] << 8 | ip[-1]);
+  };
+  auto read_constant = [&]() -> Value {
+    return frame->function->chunk->get_constant(read_byte());
+  };
+
   while (true) {
 #ifdef DEBUG_TRACE_EXECUTION
     print_stack(stack, stack_top);
-    CallFrame &frame = current_frame();
     disassemble_instruction(
-        *frame.function->chunk,
-        static_cast<int>(frame.ip - frame.function->chunk->data()));
+        *frame->function->chunk,
+        static_cast<int>(ip - frame->function->chunk->data()));
 #endif
 
     uint8_t instr = read_byte();
@@ -78,17 +89,18 @@ InterpretResult VM::run() {
       break;
     case OP_GET_LOCAL: {
       uint8_t slot = read_byte();
-      push(current_frame().slots[slot]);
+      push(frame->slots[slot]);
       break;
     }
     case OP_SET_LOCAL: {
       uint8_t slot = read_byte();
-      current_frame().slots[slot] = peek(0);
+      frame->slots[slot] = peek(0);
       break;
     }
     case OP_GET_GLOBAL: {
       uint8_t slot = read_byte();
       if (!globals_defined[slot]) {
+        frame->ip = ip;
         runtime_error("Undefined variable '{}'", global_names[slot]);
         return InterpretResult::RuntimeError;
       }
@@ -105,6 +117,7 @@ InterpretResult VM::run() {
     case OP_SET_GLOBAL: {
       uint8_t slot = read_byte();
       if (!globals_defined[slot]) {
+        frame->ip = ip;
         runtime_error("Undefined variable '{}'", global_names[slot]);
         return InterpretResult::RuntimeError;
       }
@@ -124,15 +137,19 @@ InterpretResult VM::run() {
       break;
     }
     case OP_GREATER:
+      frame->ip = ip;
       binary_op(&Value::boolean, std::greater<double>{});
       break;
     case OP_GREATER_EQUAL:
+      frame->ip = ip;
       binary_op(&Value::boolean, std::greater_equal<double>{});
       break;
     case OP_LESS:
+      frame->ip = ip;
       binary_op(&Value::boolean, std::less<double>{});
       break;
     case OP_LESS_EQUAL:
+      frame->ip = ip;
       binary_op(&Value::boolean, std::less_equal<double>{});
       break;
     case OP_ADD:
@@ -145,17 +162,21 @@ InterpretResult VM::run() {
         double a = pop().as_number();
         push(Value::number(a + b));
       } else {
+        frame->ip = ip;
         runtime_error("Operands must be numbers or strings.");
         return InterpretResult::RuntimeError;
       }
       break;
     case OP_SUBTRACT:
+      frame->ip = ip;
       binary_op(&Value::number, std::minus<double>{});
       break;
     case OP_MULTIPLY:
+      frame->ip = ip;
       binary_op(&Value::number, std::multiplies<double>{});
       break;
     case OP_DIVIDE:
+      frame->ip = ip;
       binary_op(&Value::number, std::divides<double>{});
       break;
     case OP_NOT:
@@ -163,6 +184,7 @@ InterpretResult VM::run() {
       break;
     case OP_NEGATE:
       if (!peek(0).is_number()) {
+        frame->ip = ip;
         runtime_error("Operand must be a number.");
         return InterpretResult::RuntimeError;
       }
@@ -175,25 +197,28 @@ InterpretResult VM::run() {
       break;
     }
     case OP_JUMP: {
-      current_frame().ip += read_short();
+      ip += read_short();
       break;
     }
     case OP_JUMP_IF_FALSE: {
       uint16_t offset = read_short();
       if (is_falsey(peek(0))) {
-        current_frame().ip += offset;
+        ip += offset;
       }
       break;
     }
     case OP_LOOP: {
-      current_frame().ip -= read_short();
+      ip -= read_short();
       break;
     }
     case OP_CALL: {
       int arg_count = read_byte();
+      frame->ip = ip;
       if (!call_value(peek(arg_count), arg_count)) {
         return InterpretResult::RuntimeError;
       }
+      frame = &frames[frame_count - 1];
+      ip = frame->ip;
       break;
     }
     case OP_RETURN: {
@@ -205,6 +230,8 @@ InterpretResult VM::run() {
       };
       stack_top = frames[frame_count].slots;
       push(result);
+      frame = &frames[frame_count - 1];
+      ip = frame->ip;
       break;
     }
     default:
@@ -212,20 +239,6 @@ InterpretResult VM::run() {
       return InterpretResult::RuntimeError;
     }
   }
-}
-
-CallFrame &VM::current_frame() { return frames[frame_count - 1]; }
-
-uint8_t VM::read_byte() { return *current_frame().ip++; }
-
-uint16_t VM::read_short() {
-  CallFrame &frame = current_frame();
-  frame.ip += 2;
-  return frame.ip[-2] << 8 | frame.ip[-1];
-}
-
-Value VM::read_constant() {
-  return current_frame().function->chunk->get_constant(read_byte());
 }
 
 void VM::push(Value value) {
@@ -315,7 +328,7 @@ template <typename... Args>
 void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   std::cerr << std::format(fmt, std::forward<Args>(args)...) << '\n';
 
-  CallFrame &frame = current_frame();
+  CallFrame &frame = frames[frame_count - 1];
   size_t instruction = frame.ip - frame.function->chunk->data() - 1;
   int line = frame.function->chunk->get_line(instruction);
   std::cerr << std::format("[line {}] in script\n", line);
@@ -623,5 +636,14 @@ TEST_CASE("VM::interpret") {
             InterpretResult::Ok);
     });
     CHECK(output == "In A\nnil\n");
+  }
+
+  SUBCASE("recursion restores the caller's ip across many returns") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("fun fib(n) { if (n < 2) return n; "
+                         "return fib(n - 1) + fib(n - 2); } print fib(20);") ==
+            InterpretResult::Ok);
+    });
+    CHECK(output == "6765\n");
   }
 }
