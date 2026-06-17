@@ -669,6 +669,12 @@ TEST_CASE("VM::interpret") {
     CHECK(output == "6765\n");
   }
 
+  SUBCASE("calling a native function with the correct arity succeeds") {
+    capture_stdout([&] {
+      CHECK(vm.interpret("clock();") == InterpretResult::Ok);
+    });
+  }
+
   SUBCASE("calling a native function with the wrong arity is a runtime error") {
     capture_stderr([&] {
       CHECK(vm.interpret("clock(1);") == InterpretResult::RuntimeError);
