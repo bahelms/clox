@@ -55,6 +55,10 @@ InterpretResult VM::run() {
   auto read_constant = [&]() -> Value {
     return frame->function->chunk->get_constant(read_byte());
   };
+  auto operands_must_be_numbers = [&] {
+    frame->ip = ip;
+    runtime_error("Operands must be numbers.");
+  };
 
   while (true) {
 #ifdef DEBUG_TRACE_EXECUTION
@@ -137,20 +141,28 @@ InterpretResult VM::run() {
       break;
     }
     case OP_GREATER:
-      frame->ip = ip;
-      binary_op(&Value::boolean, std::greater<double>{});
+      if (!binary_op(&Value::boolean, std::greater<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_GREATER_EQUAL:
-      frame->ip = ip;
-      binary_op(&Value::boolean, std::greater_equal<double>{});
+      if (!binary_op(&Value::boolean, std::greater_equal<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_LESS:
-      frame->ip = ip;
-      binary_op(&Value::boolean, std::less<double>{});
+      if (!binary_op(&Value::boolean, std::less<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_LESS_EQUAL:
-      frame->ip = ip;
-      binary_op(&Value::boolean, std::less_equal<double>{});
+      if (!binary_op(&Value::boolean, std::less_equal<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_ADD:
       if (peek(0).is_string() && peek(1).is_string()) {
@@ -168,16 +180,22 @@ InterpretResult VM::run() {
       }
       break;
     case OP_SUBTRACT:
-      frame->ip = ip;
-      binary_op(&Value::number, std::minus<double>{});
+      if (!binary_op(&Value::number, std::minus<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_MULTIPLY:
-      frame->ip = ip;
-      binary_op(&Value::number, std::multiplies<double>{});
+      if (!binary_op(&Value::number, std::multiplies<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_DIVIDE:
-      frame->ip = ip;
-      binary_op(&Value::number, std::divides<double>{});
+      if (!binary_op(&Value::number, std::divides<double>{})) {
+        operands_must_be_numbers();
+        return InterpretResult::RuntimeError;
+      }
       break;
     case OP_NOT:
       push(Value::boolean(is_falsey(pop())));
@@ -354,16 +372,15 @@ void VM::define_native(const char *name, NativeFn function) {
 }
 
 template <typename ValueBuilder, typename Op>
-InterpretResult VM::binary_op(ValueBuilder builder, Op op) {
+bool VM::binary_op(ValueBuilder builder, Op op) {
   if (!peek(0).is_number() || !peek(1).is_number()) {
-    runtime_error("Operands must be numbers.");
-    return InterpretResult::RuntimeError;
+    return false;
   }
 
   double b = pop().as_number();
   double a = pop().as_number();
   push(builder(op(a, b)));
-  return InterpretResult::Ok;
+  return true;
 }
 
 Value clock_native(int arg_count, Value *args) {
@@ -645,5 +662,17 @@ TEST_CASE("VM::interpret") {
             InterpretResult::Ok);
     });
     CHECK(output == "6765\n");
+  }
+
+  SUBCASE("comparison with non-number operand is a runtime error") {
+    capture_stderr([&] {
+      CHECK(vm.interpret("true < 1;") == InterpretResult::RuntimeError);
+    });
+  }
+
+  SUBCASE("arithmetic with non-number operand is a runtime error") {
+    capture_stderr([&] {
+      CHECK(vm.interpret("1 * nil;") == InterpretResult::RuntimeError);
+    });
   }
 }

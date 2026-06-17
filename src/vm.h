@@ -47,7 +47,7 @@ class VM {
   bool call(ObjFunction *function, int arg_count);
 
   template <typename ValueBuilder, typename Op>
-  InterpretResult binary_op(ValueBuilder builder, Op op);
+  bool binary_op(ValueBuilder builder, Op op);
 
   template <typename... Args>
   void runtime_error(std::format_string<Args...> fmt, Args &&...args);
