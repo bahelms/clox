@@ -111,9 +111,9 @@ public:
   void or_(bool can_assign);
 };
 
-using ParseFn = void (Compiler::*)(bool can_assign);
-
 struct ParseRule {
+  using ParseFn = void (Compiler::*)(bool can_assign);
+
   ParseFn prefix{};
   ParseFn infix{};
   Precedence precedence;

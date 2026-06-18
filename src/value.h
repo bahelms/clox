@@ -43,19 +43,19 @@ struct Value {
   bool is_object() { return type == ValueType::Object; }
 
   bool is_string() {
-    return is_object() && as_object()->type == ObjectType::String;
+    return is_object() && as_object()->type == Object::Type::String;
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
 
   bool is_function() {
-    return is_object() && as_object()->type == ObjectType::Function;
+    return is_object() && as_object()->type == Object::Type::Function;
   }
   ObjFunction *as_function() const {
     return static_cast<ObjFunction *>(as_object());
   }
 
   bool is_native() {
-    return is_object() && as_object()->type == ObjectType::Native;
+    return is_object() && as_object()->type == Object::Type::Native;
   }
   ObjNative *as_native() const { return static_cast<ObjNative *>(as_object()); }
 

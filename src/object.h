@@ -4,14 +4,14 @@
 struct Value;
 class Chunk;
 
-enum class ObjectType { String, Function, Native };
-
 class Object {
 public:
-  ObjectType type{};
+  enum class Type { String, Function, Native };
+
+  Type type{};
   Object *next{};
 
-  explicit Object(ObjectType t) : type(t) {}
+  explicit Object(Type t) : type(t) {}
 };
 
 class ObjString : public Object {
@@ -19,7 +19,7 @@ public:
   std::string chars;
 
   explicit ObjString(std::string s)
-      : Object(ObjectType::String), chars(std::move(s)) {}
+      : Object(Type::String), chars(std::move(s)) {}
 };
 
 class ObjFunction : public Object {
@@ -38,7 +38,7 @@ struct ObjNative : public Object {
   int arity{};
 
   ObjNative(NativeFn fn, int arity)
-      : Object(ObjectType::Native), function(fn), arity(arity) {}
+      : Object(Type::Native), function(fn), arity(arity) {}
 };
 
 void print_object(const Value &value);

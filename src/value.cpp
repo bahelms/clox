@@ -25,11 +25,11 @@ bool values_equal(const Value a, const Value b) {
       return false;
     }
     switch (obj_a->type) {
-    case ObjectType::String:
+    case Object::Type::String:
       return a.as_string()->chars == b.as_string()->chars;
-    case ObjectType::Function:
+    case Object::Type::Function:
       return obj_a == obj_b;
-    case ObjectType::Native:
+    case Object::Type::Native:
       return obj_a == obj_b;
     }
   }
