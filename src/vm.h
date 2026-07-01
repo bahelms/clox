@@ -20,7 +20,7 @@ enum class InterpretResult {
 };
 
 struct CallFrame {
-  ObjFunction *function{};
+  ObjClosure *closure{};
   const uint8_t *ip{};
   Value *slots{};
 };
@@ -44,7 +44,7 @@ class VM {
   Value peek(int distance);
   void reset_stack();
   bool call_value(Value callee, int arg_count);
-  bool call(ObjFunction *function, int arg_count);
+  bool call(ObjClosure *closure, int arg_count);
 
   template <typename ValueBuilder, typename Op>
   bool binary_op(ValueBuilder builder, Op op);
@@ -59,6 +59,7 @@ public:
   InterpretResult interpret(std::string source);
   ObjString *alloc_string(std::string s);
   ObjNative *alloc_native(NativeFn function, int arity);
+  ObjClosure *alloc_closure(ObjFunction *fn);
   std::expected<uint8_t, const char *>
   get_or_alloc_global_slot(const std::string &name);
 };

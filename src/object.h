@@ -6,7 +6,7 @@ class Chunk;
 
 class Object {
 public:
-  enum class Type { String, Function, Native };
+  enum class Type { String, Function, Closure, Native };
 
   Type type{};
   Object *next{};
@@ -29,6 +29,12 @@ public:
   Chunk *chunk{};
 
   ObjFunction();
+};
+
+struct ObjClosure : public Object {
+  ObjFunction *function{};
+
+  ObjClosure(ObjFunction *fn) : Object(Type::Closure), function(fn) {}
 };
 
 using NativeFn = Value (*)(int arg_count, Value *args);

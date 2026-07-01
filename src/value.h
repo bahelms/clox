@@ -35,6 +35,10 @@ struct Value {
     return {ValueType::Object, {.object = obj_func}};
   }
 
+  static Value object(ObjClosure *obj_closure) {
+    return {ValueType::Object, {.object = obj_closure}};
+  }
+
   static Value object(ObjNative *obj_native) {
     return {ValueType::Object, {.object = obj_native}};
   }
@@ -47,11 +51,19 @@ struct Value {
   }
   ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
 
+  // not used anymore
   bool is_function() {
     return is_object() && as_object()->type == Object::Type::Function;
   }
   ObjFunction *as_function() const {
     return static_cast<ObjFunction *>(as_object());
+  }
+
+  bool is_closure() {
+    return is_object() && as_object()->type == Object::Type::Closure;
+  }
+  ObjClosure *as_closure() const {
+    return static_cast<ObjClosure *>(as_object());
   }
 
   bool is_native() {

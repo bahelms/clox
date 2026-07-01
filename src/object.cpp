@@ -9,7 +9,16 @@
 
 // This is here since the header only has a forward declaration of Chunk.
 // Actually using it is an implementation.
-ObjFunction::ObjFunction() : Object(Object::Type::Function), chunk(new Chunk()) {}
+ObjFunction::ObjFunction()
+    : Object(Object::Type::Function), chunk(new Chunk()) {}
+
+void print_function(ObjFunction *fn) {
+  if (!fn->name) {
+    std::print("<script>");
+    return;
+  }
+  std::print("<fn {}>", fn->name->chars);
+}
 
 void print_object(const Value &value) {
   switch (value.as_object()->type) {
@@ -17,14 +26,12 @@ void print_object(const Value &value) {
     std::cout << value.as_string()->chars;
     break;
   case Object::Type::Function: {
-    ObjFunction *fn = value.as_function();
-    if (!fn->name) {
-      std::print("<script>");
-      return;
-    }
-    std::print("<fn {}>", value.as_function()->name->chars);
+    print_function(value.as_function());
     break;
   }
+  case Object::Type::Closure:
+    print_function(value.as_closure()->function);
+    break;
   case Object::Type::Native:
     std::print("<native fn>");
     break;

@@ -219,7 +219,7 @@ void Compiler::compile_function(FunctionType type) {
       std::string(parser.previous.start, parser.previous.length));
   compiler.function_body();
   ObjFunction *fn = compiler.end();
-  emit_bytes(OP_CONSTANT, make_constant(Value::object(fn)));
+  emit_bytes(OP_CLOSURE, make_constant(Value::object(fn)));
 }
 
 void Compiler::function_body() {
@@ -1087,7 +1087,7 @@ TEST_CASE("Compiler: function declaration") {
     Chunk &chunk = *compile_script("fun f() {}", vm)->chunk;
     // [0] OP_CONSTANT [1] fn_idx [2] OP_DEFINE_GLOBAL [3] slot [4] OP_NIL [5]
     // OP_RETURN
-    CHECK(chunk[0] == OP_CONSTANT);
+    CHECK(chunk[0] == OP_CLOSURE);
     CHECK(chunk[2] == OP_DEFINE_GLOBAL);
     CHECK(chunk[4] == OP_NIL);
     CHECK(chunk[5] == OP_RETURN);
@@ -1124,7 +1124,7 @@ TEST_CASE("Compiler: function declaration") {
     CHECK(outer->name->chars == "outer");
     // `inner` is a local inside outer, emitted as a constant in outer's chunk.
     Chunk &outer_body = *outer->chunk;
-    CHECK(outer_body[0] == OP_CONSTANT);
+    CHECK(outer_body[0] == OP_CLOSURE);
     ObjFunction *inner = outer_body.get_constant(outer_body[1]).as_function();
     CHECK(inner->name->chars == "inner");
   }

@@ -42,6 +42,14 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
     return jump_instruction("OP_LOOP", -1, chunk, offset);
   case OP_CALL:
     return byte_instruction("OP_CALL", chunk, offset);
+  case OP_CLOSURE: {
+    offset++;
+    uint8_t constant_idx = chunk[offset++];
+    std::print("{:<16} {:4d} ", "OP_CLOSURE", constant_idx);
+    print_value(chunk.get_constant(constant_idx));
+    std::print("\n");
+    return offset;
+  }
   case OP_RETURN:
     return simple_instruction("OP_RETURN", offset);
   case OP_CONSTANT:

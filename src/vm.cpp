@@ -39,7 +39,11 @@ InterpretResult VM::interpret(std::string source) {
   }
 
   push(Value::object(function));
-  call(function, 0);
+  ObjClosure *closure = alloc_closure(function);
+  pop();
+  push(Value::object(closure));
+  call(closure, 0);
+
   return run();
 }
 
@@ -53,7 +57,7 @@ InterpretResult VM::run() {
     return static_cast<uint16_t>(ip[-2] << 8 | ip[-1]);
   };
   auto read_constant = [&]() -> Value {
-    return frame->function->chunk->get_constant(read_byte());
+    return frame->closure->function->chunk->get_constant(read_byte());
   };
   auto operands_must_be_numbers = [&] {
     frame->ip = ip;
@@ -64,7 +68,7 @@ InterpretResult VM::run() {
 #ifdef DEBUG_TRACE_EXECUTION
     print_stack(stack, stack_top);
     disassemble_instruction(
-        *frame->function->chunk,
+        *frame->closure->function->chunk,
         static_cast<int>(ip - frame->function->chunk->data()));
 #endif
 
@@ -239,6 +243,11 @@ InterpretResult VM::run() {
       ip = frame->ip;
       break;
     }
+    case OP_CLOSURE: {
+      ObjFunction *function = read_constant().as_function();
+      push(Value::object(alloc_closure(function)));
+      break;
+    }
     case OP_RETURN: {
       Value result = pop();
       frame_count--;
@@ -274,8 +283,8 @@ Value VM::peek(int distance) { return stack_top[-1 - distance]; }
 void VM::reset_stack() { stack_top = stack; }
 
 bool VM::call_value(Value callee, int arg_count) {
-  if (callee.is_function()) {
-    return call(callee.as_function(), arg_count);
+  if (callee.is_closure()) {
+    return call(callee.as_closure(), arg_count);
   } else if (callee.is_native()) {
     ObjNative *native = callee.as_native();
     if (arg_count != native->arity) {
@@ -292,9 +301,9 @@ bool VM::call_value(Value callee, int arg_count) {
   return false;
 }
 
-bool VM::call(ObjFunction *function, int arg_count) {
-  if (arg_count != function->arity) {
-    runtime_error("Expected {} arguments but got {}.", function->arity,
+bool VM::call(ObjClosure *closure, int arg_count) {
+  if (arg_count != closure->function->arity) {
+    runtime_error("Expected {} arguments but got {}.", closure->function->arity,
                   arg_count);
     return false;
   }
@@ -305,8 +314,8 @@ bool VM::call(ObjFunction *function, int arg_count) {
   }
 
   CallFrame &frame = frames[frame_count++];
-  frame.function = function;
-  frame.ip = function->chunk->data();
+  frame.closure = closure;
+  frame.ip = closure->function->chunk->data();
   frame.slots = stack_top - arg_count - 1;
   return true;
 }
@@ -347,18 +356,25 @@ ObjNative *VM::alloc_native(NativeFn function, int arity) {
   return obj;
 }
 
+ObjClosure *VM::alloc_closure(ObjFunction *fn) {
+  auto *obj = new ObjClosure(fn);
+  obj->next = objects;
+  objects = obj;
+  return obj;
+}
+
 template <typename... Args>
 void VM::runtime_error(std::format_string<Args...> fmt, Args &&...args) {
   std::cerr << std::format(fmt, std::forward<Args>(args)...) << '\n';
 
   CallFrame &frame = frames[frame_count - 1];
-  size_t instruction = frame.ip - frame.function->chunk->data() - 1;
-  int line = frame.function->chunk->get_line(instruction);
+  size_t instruction = frame.ip - frame.closure->function->chunk->data() - 1;
+  int line = frame.closure->function->chunk->get_line(instruction);
   std::cerr << std::format("[line {}] in script\n", line);
 
   for (CallFrame &frame :
        std::span(frames).first(frame_count) | std::views::reverse) {
-    ObjFunction *function = frame.function;
+    ObjFunction *function = frame.closure->function;
     size_t instruction = frame.ip - function->chunk->data() - 1;
     std::print(stderr, "[line {}] in ", function->chunk->get_line(instruction));
     if (!function->name) {
@@ -670,9 +686,8 @@ TEST_CASE("VM::interpret") {
   }
 
   SUBCASE("calling a native function with the correct arity succeeds") {
-    capture_stdout([&] {
-      CHECK(vm.interpret("clock();") == InterpretResult::Ok);
-    });
+    capture_stdout(
+        [&] { CHECK(vm.interpret("clock();") == InterpretResult::Ok); });
   }
 
   SUBCASE("calling a native function with the wrong arity is a runtime error") {
