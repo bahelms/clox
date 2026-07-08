@@ -6,6 +6,7 @@
 #include "object.h"
 #include "parser.h"
 #include "scanner.h"
+#include "vm.h"
 
 enum class Precedence {
   None,
@@ -32,6 +33,11 @@ struct Local {
   int depth{};
 };
 
+struct Upvalue {
+  uint8_t index{};
+  bool is_local{};
+};
+
 enum class FunctionType {
   Script,
   Function,
@@ -46,7 +52,8 @@ class Compiler {
 
   int local_count{};
   int scope_depth{};
-  std::array<Local, UINT8_MAX + 1> locals{};
+  std::array<Local, UINT8_COUNT> locals{};
+  std::array<Upvalue, UINT8_COUNT> upvalues{};
 
   Chunk *current_chunk() { return function->chunk; };
   ObjFunction *end();
@@ -85,6 +92,8 @@ class Compiler {
   void expression_statement();
   void named_variable(const Token &name, bool can_assign);
   int resolve_local(const Token &name);
+  int resolve_upvalue(const Token &name);
+  int add_upvalue(uint8_t index, bool is_local);
   void block();
   void begin_scope();
   void end_scope();

@@ -4,6 +4,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "doctest.h"
+#include "object.h"
 #include "test_utils.h"
 #include "value.h"
 
@@ -48,6 +49,14 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
     std::print("{:<16} {:4d} ", "OP_CLOSURE", constant_idx);
     print_value(chunk.get_constant(constant_idx));
     std::print("\n");
+
+    ObjFunction *function = chunk.get_constant(constant_idx).as_function();
+    for (int j = 0; j < function->upvalue_count; j++) {
+      int is_local = chunk[offset++];
+      int index = chunk[offset++];
+      std::println("{:4d}    |           {} {:d}", offset - 2,
+                   is_local ? "local" : "upvalue", index);
+    }
     return offset;
   }
   case OP_RETURN:
@@ -74,6 +83,10 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
     return slot_instruction("OP_DEFINE_GLOBAL", chunk, offset);
   case OP_SET_GLOBAL:
     return slot_instruction("OP_SET_GLOBAL", chunk, offset);
+  case OP_GET_UPVALUE:
+    return byte_instruction("OP_GET_UPVALUE", chunk, offset);
+  case OP_SET_UPVALUE:
+    return byte_instruction("OP_SET_UPVALUE", chunk, offset);
   case OP_EQUAL:
     return simple_instruction("OP_EQUAL", offset);
   case OP_NOT_EQUAL:

@@ -220,6 +220,12 @@ void Compiler::compile_function(FunctionType type) {
   compiler.function_body();
   ObjFunction *fn = compiler.end();
   emit_bytes(OP_CLOSURE, make_constant(Value::object(fn)));
+
+  for (const Upvalue &uv :
+       std::span(compiler.upvalues).first(fn->upvalue_count)) {
+    emit_byte(uv.is_local ? 1 : 0);
+    emit_byte(uv.index);
+  }
 }
 
 void Compiler::function_body() {
@@ -547,6 +553,9 @@ void Compiler::named_variable(const Token &name, bool can_assign) {
   if (arg != -1) {
     get_op = OP_GET_LOCAL;
     set_op = OP_SET_LOCAL;
+  } else if ((arg = resolve_upvalue(name)) != -1) {
+    get_op = OP_GET_UPVALUE;
+    set_op = OP_SET_UPVALUE;
   } else {
     arg = identifier_constant(name);
     get_op = OP_GET_GLOBAL;
@@ -571,6 +580,42 @@ int Compiler::resolve_local(const Token &name) {
     }
   }
   return -1;
+}
+
+int Compiler::resolve_upvalue(const Token &name) {
+  if (!enclosing) {
+    return -1;
+  }
+
+  int local = enclosing->resolve_local(name);
+  if (local != -1) {
+    return add_upvalue(local, true);
+  }
+
+  int upvalue = enclosing->resolve_upvalue(name);
+  if (upvalue != -1) {
+    return add_upvalue(upvalue, false);
+  }
+  return -1;
+}
+
+int Compiler::add_upvalue(uint8_t index, bool is_local) {
+  int upvalue_count = function->upvalue_count;
+  for (int i = 0; i < upvalue_count; i++) {
+    Upvalue &upvalue = upvalues[i];
+    if (upvalue.index == index && upvalue.is_local == is_local) {
+      return i;
+    }
+  }
+
+  if (upvalue_count == UINT8_COUNT) {
+    parser.error("Too many closure variables in function.");
+    return 0;
+  }
+
+  upvalues[upvalue_count].is_local = is_local;
+  upvalues[upvalue_count].index = index;
+  return function->upvalue_count++;
 }
 
 void Compiler::and_(bool can_assign) {

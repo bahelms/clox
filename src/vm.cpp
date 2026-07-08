@@ -132,6 +132,16 @@ InterpretResult VM::run() {
       globals[slot] = peek(0);
       break;
     }
+    case OP_GET_UPVALUE: {
+      uint8_t slot = read_byte();
+      push(*frame->closure->upvalues[slot]->location);
+      break;
+    }
+    case OP_SET_UPVALUE: {
+      uint8_t slot = read_byte();
+      *frame->closure->upvalues[slot]->location = peek(0);
+      break;
+    }
     case OP_EQUAL: {
       Value b = pop();
       Value a = pop();
@@ -245,7 +255,18 @@ InterpretResult VM::run() {
     }
     case OP_CLOSURE: {
       ObjFunction *function = read_constant().as_function();
-      push(Value::object(alloc_closure(function)));
+      ObjClosure *closure = alloc_closure(function);
+      push(Value::object(closure));
+
+      for (ObjUpvalue *&upvalue : closure->upvalues) {
+        uint8_t is_local = read_byte();
+        uint8_t index = read_byte();
+        if (is_local) {
+          upvalue = capture_upvalue(frame->slots + index);
+        } else {
+          upvalue = frame->closure->upvalues[index];
+        }
+      }
       break;
     }
     case OP_RETURN: {
@@ -360,6 +381,14 @@ ObjClosure *VM::alloc_closure(ObjFunction *fn) {
   auto *obj = new ObjClosure(fn);
   obj->next = objects;
   objects = obj;
+  return obj;
+}
+
+ObjUpvalue *VM::capture_upvalue(Value *local) {
+  auto *obj = new ObjUpvalue(local);
+  // does it need to be put in the objects?
+  // obj->next = objects;
+  // objects = obj;
   return obj;
 }
 
@@ -683,6 +712,36 @@ TEST_CASE("VM::interpret") {
             InterpretResult::Ok);
     });
     CHECK(output == "6765\n");
+  }
+
+  SUBCASE("closure reads an enclosing function's local") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("var x = \"global\"; "
+                         "fun outer() { var x = \"outer\"; "
+                         "fun inner() { print x; } inner(); } "
+                         "outer();") == InterpretResult::Ok);
+    });
+    CHECK(output == "outer\n");
+  }
+
+  SUBCASE("closure writes an enclosing function's local") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("fun outer() { var x = \"before\"; "
+                         "fun inner() { x = \"after\"; } "
+                         "inner(); print x; } "
+                         "outer();") == InterpretResult::Ok);
+    });
+    CHECK(output == "after\n");
+  }
+
+  SUBCASE("closure captures a variable through an intermediate function") {
+    std::string output = capture_stdout([&] {
+      CHECK(vm.interpret("fun outer() { var x = \"captured\"; "
+                         "fun middle() { fun inner() { print x; } inner(); } "
+                         "middle(); } "
+                         "outer();") == InterpretResult::Ok);
+    });
+    CHECK(output == "captured\n");
   }
 
   SUBCASE("calling a native function with the correct arity succeeds") {

@@ -60,6 +60,7 @@ public:
   ObjString *alloc_string(std::string s);
   ObjNative *alloc_native(NativeFn function, int arity);
   ObjClosure *alloc_closure(ObjFunction *fn);
+  ObjUpvalue *capture_upvalue(Value *local);
   std::expected<uint8_t, const char *>
   get_or_alloc_global_slot(const std::string &name);
 };

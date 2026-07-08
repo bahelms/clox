@@ -23,7 +23,7 @@ void print_function(ObjFunction *fn) {
 void print_object(const Value &value) {
   switch (value.as_object()->type) {
   case Object::Type::String:
-    std::cout << value.as_string()->chars;
+    std::print("{}", value.as_string()->chars);
     break;
   case Object::Type::Function: {
     print_function(value.as_function());
@@ -31,6 +31,9 @@ void print_object(const Value &value) {
   }
   case Object::Type::Closure:
     print_function(value.as_closure()->function);
+    break;
+  case Object::Type::Upvalue:
+    std::print("upvalue");
     break;
   case Object::Type::Native:
     std::print("<native fn>");

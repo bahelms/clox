@@ -1,12 +1,13 @@
 #pragma once
 #include <string>
+#include <vector>
 
 struct Value;
 class Chunk;
 
 class Object {
 public:
-  enum class Type { String, Function, Closure, Native };
+  enum class Type { String, Function, Closure, Native, Upvalue };
 
   Type type{};
   Object *next{};
@@ -27,14 +28,25 @@ public:
   int arity{};
   ObjString *name{};
   Chunk *chunk{};
+  int upvalue_count{};
 
   ObjFunction();
 };
 
+struct ObjUpvalue : public Object {
+  Value *location{};
+
+  ObjUpvalue(Value *slot) : Object(Type::Upvalue), location(slot) {}
+};
+
 struct ObjClosure : public Object {
   ObjFunction *function{};
+  int upvalue_count{}; // needed for GC
+  std::vector<ObjUpvalue *> upvalues{};
 
-  ObjClosure(ObjFunction *fn) : Object(Type::Closure), function(fn) {}
+  ObjClosure(ObjFunction *fn)
+      : Object(Type::Closure), function(fn), upvalue_count(fn->upvalue_count),
+        upvalues(fn->upvalue_count, nullptr) {}
 };
 
 using NativeFn = Value (*)(int arg_count, Value *args);

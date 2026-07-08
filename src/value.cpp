@@ -31,6 +31,8 @@ bool values_equal(const Value a, const Value b) {
       return obj_a == obj_b;
     case Object::Type::Closure:
       return obj_a == obj_b;
+    case Object::Type::Upvalue:
+      return obj_a == obj_b;
     case Object::Type::Native:
       return obj_a == obj_b;
     }
