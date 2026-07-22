@@ -269,6 +269,10 @@ InterpretResult VM::run() {
       }
       break;
     }
+    case OP_CLOSE_UPVALUE:
+      close_upvalues(stack_top - 1);
+      pop();
+      break;
     case OP_RETURN: {
       Value result = pop();
       frame_count--;
@@ -385,11 +389,36 @@ ObjClosure *VM::alloc_closure(ObjFunction *fn) {
 }
 
 ObjUpvalue *VM::capture_upvalue(Value *local) {
+  ObjUpvalue *prev_upvalue{};
+  ObjUpvalue *upvalue = open_upvalues;
+  while (upvalue && upvalue->location > local) {
+    prev_upvalue = upvalue;
+    upvalue = upvalue->next;
+  }
+  if (upvalue && upvalue->location == local) {
+    return upvalue;
+  }
+
   auto *obj = new ObjUpvalue(local);
   // does it need to be put in the objects?
   // obj->next = objects;
   // objects = obj;
+  obj->next = upvalue;
+  if (!prev_upvalue) {
+    open_upvalues = obj;
+  } else {
+    prev_upvalue->next = obj;
+  }
   return obj;
+}
+
+void VM::close_upvalues(Value *last) {
+  // while (open_upvalues && open_upvalues->location >= last) {
+  //   ObjUpvalue *upvalue = open_upvalues;
+  //   upvalue->closed = *upvalue->location;
+  //   upvalue->location = &upvalue->closed;
+  //   open_upvalues = upvalue->next;
+  // }
 }
 
 template <typename... Args>

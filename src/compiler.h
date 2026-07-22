@@ -31,6 +31,7 @@ class VM;
 struct Local {
   Token name{};
   int depth{};
+  bool is_captured{};
 };
 
 struct Upvalue {
@@ -118,6 +119,8 @@ public:
   void variable(bool can_assign);
   void and_(bool can_assign);
   void or_(bool can_assign);
+
+  void capture_local(int local) { locals[local].is_captured = true; }
 };
 
 struct ParseRule {

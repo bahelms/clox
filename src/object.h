@@ -35,6 +35,8 @@ public:
 
 struct ObjUpvalue : public Object {
   Value *location{};
+  ObjUpvalue *next{};
+  // Value closed{};
 
   ObjUpvalue(Value *slot) : Object(Type::Upvalue), location(slot) {}
 };

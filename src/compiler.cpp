@@ -398,12 +398,24 @@ void Compiler::begin_scope() { scope_depth++; }
 
 void Compiler::end_scope() {
   scope_depth--;
-  int locals_to_pop{};
+  int pending_pops{};
+  auto flush_pops = [&] {
+    if (pending_pops > 0) {
+      emit_bytes(OP_POPN, pending_pops);
+    }
+    pending_pops = 0;
+  };
+
   while (local_count > 0 && locals[local_count - 1].depth > scope_depth) {
+    if (locals[local_count - 1].is_captured) {
+      flush_pops();
+      emit_byte(OP_CLOSE_UPVALUE);
+    } else {
+      pending_pops++;
+    }
     local_count--;
-    locals_to_pop++;
   }
-  emit_bytes(OP_POPN, locals_to_pop);
+  emit_bytes(OP_POPN, pending_pops);
 }
 
 void Compiler::expression_statement() {
@@ -589,6 +601,7 @@ int Compiler::resolve_upvalue(const Token &name) {
 
   int local = enclosing->resolve_local(name);
   if (local != -1) {
+    capture_local(local);
     return add_upvalue(local, true);
   }
 

@@ -29,6 +29,7 @@ class VM {
   Value stack[STACK_MAX]{};
   Value *stack_top{};
   Object *objects{};
+  ObjUpvalue *open_upvalues{};
   CallFrame frames[FRAMES_MAX];
   int frame_count{};
 
@@ -61,6 +62,7 @@ public:
   ObjNative *alloc_native(NativeFn function, int arity);
   ObjClosure *alloc_closure(ObjFunction *fn);
   ObjUpvalue *capture_upvalue(Value *local);
+  void close_upvalues(Value *last);
   std::expected<uint8_t, const char *>
   get_or_alloc_global_slot(const std::string &name);
 };

@@ -1,10 +1,12 @@
-var x = "global";
 
 fun outer() {
   var x = "outer";
   fun inner() {
     print x;
   }
-  inner();
+  return inner;
 }
-outer();
+
+
+var closure = outer();
+closure();

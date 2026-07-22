@@ -59,6 +59,8 @@ int disassemble_instruction(const Chunk &chunk, int offset) {
     }
     return offset;
   }
+  case OP_CLOSE_UPVALUE:
+    return simple_instruction("OP_CLOSE_UPVALUE", offset);
   case OP_RETURN:
     return simple_instruction("OP_RETURN", offset);
   case OP_CONSTANT:
