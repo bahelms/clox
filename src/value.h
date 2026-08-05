@@ -1,6 +1,11 @@
 #pragma once
 
-#include "object.h"
+struct Value;
+struct Object;
+struct ObjString;
+struct ObjFunction;
+struct ObjClosure;
+struct ObjNative;
 
 enum class ValueType { Boolean, Nil, Number, Object };
 
@@ -27,49 +32,26 @@ struct Value {
   double as_number() const { return as.number; }
   bool is_number() { return type == ValueType::Number; }
 
-  static Value object(ObjString *obj_str) {
-    return {ValueType::Object, {.object = obj_str}};
-  }
-
-  static Value object(ObjFunction *obj_func) {
-    return {ValueType::Object, {.object = obj_func}};
-  }
-
-  static Value object(ObjClosure *obj_closure) {
-    return {ValueType::Object, {.object = obj_closure}};
-  }
-
-  static Value object(ObjNative *obj_native) {
-    return {ValueType::Object, {.object = obj_native}};
-  }
+  static Value object(ObjString *obj_str);
+  static Value object(ObjFunction *obj_func);
+  static Value object(ObjClosure *obj_closure);
+  static Value object(ObjNative *obj_native);
 
   Object *as_object() const { return as.object; }
   bool is_object() { return type == ValueType::Object; }
 
-  bool is_string() {
-    return is_object() && as_object()->type == Object::Type::String;
-  }
-  ObjString *as_string() const { return static_cast<ObjString *>(as_object()); }
+  bool is_string();
+  ObjString *as_string() const;
 
   // not used anymore
-  bool is_function() {
-    return is_object() && as_object()->type == Object::Type::Function;
-  }
-  ObjFunction *as_function() const {
-    return static_cast<ObjFunction *>(as_object());
-  }
+  bool is_function();
+  ObjFunction *as_function() const;
 
-  bool is_closure() {
-    return is_object() && as_object()->type == Object::Type::Closure;
-  }
-  ObjClosure *as_closure() const {
-    return static_cast<ObjClosure *>(as_object());
-  }
+  bool is_closure();
+  ObjClosure *as_closure() const;
 
-  bool is_native() {
-    return is_object() && as_object()->type == Object::Type::Native;
-  }
-  ObjNative *as_native() const { return static_cast<ObjNative *>(as_object()); }
+  bool is_native();
+  ObjNative *as_native() const;
 
   const bool operator==(const Value &other_value) const {
     return values_equal(*this, other_value);
@@ -77,3 +59,8 @@ struct Value {
 };
 
 void print_value(Value value);
+
+// Value's object-dependent methods are defined at the bottom of object.h, once
+// the Obj* types are complete. Include it here so that including value.h alone
+// still yields the full Value + Object API.
+#include "object.h"
